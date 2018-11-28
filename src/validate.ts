@@ -51,14 +51,22 @@ export interface ISignInvites {
 }
 
 export class CertiMintValidation {
-  public async validateSeal(
+  public async validateSealAndData(
     seal: ISeal,
     data: string,
     dataType: DataType,
     ethereumMainnetNodeUrl: string = 'https://mainnet.infura.io'
   ): Promise<boolean> {
     const hash = await this.hashForData(data, dataType);
+    return (
+      hash === seal.dataHash && this.validateSeal(seal, ethereumMainnetNodeUrl)
+    );
+  }
 
+  public async validateSeal(
+    seal: ISeal,
+    ethereumMainnetNodeUrl: string = 'https://mainnet.infura.io'
+  ): Promise<boolean> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash
@@ -69,7 +77,7 @@ export class CertiMintValidation {
       ethereumMainnetNodeUrl
     );
 
-    return hash === seal.dataHash && validAnchors && validSignatures;
+    return validAnchors && validSignatures;
   }
 
   private async hashForData(
