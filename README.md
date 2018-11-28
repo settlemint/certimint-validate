@@ -7,3 +7,16 @@ This npm package allows you to independently verify a CertiMint blockchain seal.
 ```sh
 npm install --save @settlemint/certimint-validate
 ```
+
+## Usage
+
+```typescript
+
+    import { CertiMintValidation } from '@settlemint/certimint-validate';
+
+    const certiMintValidation = new CertiMintValidation();
+    isValid = await certiMintValidation.validateSeal(
+      document.seal,
+      'https://mainnet.infura.io'
+    );
+```
