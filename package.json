@@ -8,7 +8,7 @@
     "build": "tsc --declaration",
     "tslint": "tslint -c tslint.json -p tsconfig.json",
     "pretest": "npm run tslint",
-    "test": "jest --forceExit --coverage --verbose",
+    "test": "jest --forceExit --coverage --detectOpenHandles --verbose",
     "travis-deploy-once": "travis-deploy-once",
     "semantic-release": "semantic-release"
   },
