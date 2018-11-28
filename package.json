@@ -1,0 +1,53 @@
+{
+  "name": "@settlemint/certimint-validate",
+  "version": "0.0.0-development",
+  "description": "Tools for validating the CertiMint proofs without CertiMint",
+  "main": "dist/validate.js",
+  "types": "dist/validate.d.ts",
+  "scripts": {
+    "build": "tsc --declaration",
+    "tslint": "tslint -c tslint.json -p tsconfig.json",
+    "pretest": "npm run tslint",
+    "test": "jest --forceExit --coverage --verbose",
+    "travis-deploy-once": "travis-deploy-once",
+    "semantic-release": "semantic-release"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/settlemint/certimint-validate.git"
+  },
+  "keywords": [
+    "merkle tree",
+    "merkle proof",
+    "merkle",
+    "certimint",
+    "sealing",
+    "blockchain"
+  ],
+  "author": "Roderik van der Veer <roderik@settlemint.com> (https://settlemint.com)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/settlemint/certimint-validate/issues"
+  },
+  "homepage": "https://github.com/settlemint/certimint-validate#readme",
+  "dependencies": {
+    "@settlemint/merkle-tools": "^1.0.6",
+    "ethers": "^4.0.15",
+    "js-sha3": "^0.8.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^23.3.9",
+    "@types/node": "^10.12.10",
+    "concurrently": "^4.1.0",
+    "jest": "^23.6.0",
+    "nodemon": "^1.18.7",
+    "prettier": "^1.15.2",
+    "semantic-release": "^15.12.2",
+    "travis-deploy-once": "^5.0.9",
+    "ts-jest": "^23.10.5",
+    "ts-node": "^7.0.1",
+    "tslint": "^5.11.0",
+    "tslint-config-prettier": "^1.17.0",
+    "typescript": "^3.1.6"
+  }
+}
