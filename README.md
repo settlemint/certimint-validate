@@ -16,7 +16,7 @@ npm install --save @settlemint/certimint-validate
 
     const certiMintValidation = new CertiMintValidation();
     isValid = await certiMintValidation.validateSeal(
-      document.seal,
+      mySealObject,
       'https://mainnet.infura.io'
     );
 ```
