@@ -32,8 +32,11 @@
   "homepage": "https://github.com/settlemint/certimint-validate#readme",
   "dependencies": {
     "@settlemint/merkle-tools": "^1.0.7",
+    "axios": "^0.18.0",
+    "babel-cli": "^6.26.0",
     "ethers": "^4.0.15",
-    "js-sha3": "^0.8.0"
+    "js-sha3": "^0.8.0",
+    "tsc-watch": "^2.1.2"
   },
   "devDependencies": {
     "@types/jest": "^23.3.9",
