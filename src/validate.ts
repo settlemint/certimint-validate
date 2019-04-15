@@ -2,7 +2,6 @@ import MerkleTools from '@settlemint/merkle-tools';
 import { JsonRpcProvider } from 'ethers/providers/json-rpc-provider';
 import { sha3_512 } from 'js-sha3';
 import { Readable } from 'stream';
-import { AbstractResourceSchema } from '../../mint/dapi/src/webserver/abstract-resource';
 import Axios from 'axios';
 
 export enum Protocol {
@@ -79,6 +78,7 @@ export class CertiMintValidation {
     baseUrl: string = 'https://mainnet.infura.io',
     protocol: Protocol = Protocol.ETHEREUM
   ): Promise<boolean> {
+    console.log(baseUrl, protocol);
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash,
@@ -174,8 +174,7 @@ export class CertiMintValidation {
           try {
             const txId = anchor.transactionId;
             const tx = await Axios.get(this.buildTxUrl(baseUrl, txId));
-            console.log(anchor, tx, 'ello');
-            console.log(anchor, networkName);
+            // console.log(anchor, tx, 'ello');
           } catch (error) {
             console.log(error);
           }
