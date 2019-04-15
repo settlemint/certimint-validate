@@ -174,7 +174,7 @@ export class CertiMintValidation {
           try {
             const txId = anchor.transactionId;
             const tx = await Axios.get(this.buildTxUrl(baseUrl, txId));
-            // console.log(anchor, tx, 'ello');
+            console.log(anchor, tx, 'ello');
           } catch (error) {
             console.log(error);
           }
