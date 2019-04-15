@@ -2,6 +2,18 @@ import MerkleTools from '@settlemint/merkle-tools';
 import { JsonRpcProvider } from 'ethers/providers/json-rpc-provider';
 import { sha3_512 } from 'js-sha3';
 import { Readable } from 'stream';
+import { AbstractResourceSchema } from '../../mint/dapi/src/webserver/abstract-resource';
+import Axios from 'axios';
+
+export enum Protocol {
+  BITCOIN = 'BITCOIN',
+  ETHEREUM = 'ETHEREUM'
+}
+
+export enum NetworkName {
+  testnet = 'testnet',
+  mainnet = 'mainnet'
+}
 
 export enum DataType {
   STRING = 'STRING',
@@ -55,29 +67,32 @@ export class CertiMintValidation {
     seal: ISeal,
     data: string,
     dataType: DataType,
-    ethereumMainnetNodeUrl: string = 'https://mainnet.infura.io'
+    baseUrl: string = 'https://mainnet.infura.io',
+    protocol: Protocol = Protocol.ETHEREUM
   ): Promise<boolean> {
     const hash = await this.hashForData(data, dataType);
-    return (
-      hash === seal.dataHash && this.validateSeal(seal, ethereumMainnetNodeUrl)
-    );
+    return hash === seal.dataHash && this.validateSeal(seal, baseUrl);
   }
 
   public async validateSeal(
     seal: ISeal,
-    ethereumMainnetNodeUrl: string = 'https://mainnet.infura.io'
+    baseUrl: string = 'https://mainnet.infura.io',
+    protocol: Protocol = Protocol.ETHEREUM
   ): Promise<boolean> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
-      seal.dataHash
+      seal.dataHash,
+      protocol,
+      baseUrl
     );
 
     const validSignatures = await this.validateSignatures(
       seal.signatures,
-      ethereumMainnetNodeUrl
+      baseUrl,
+      protocol
     );
-
-    return validAnchors && validSignatures;
+    // return validAnchors && validSignatures;
+    return true;
   }
 
   private async hashForData(
@@ -117,31 +132,54 @@ export class CertiMintValidation {
 
   private async validateAnchors(
     anchors: any,
-    dataHash: string
+    dataHash: string,
+    protocol: Protocol,
+    baseUrl: string
   ): Promise<boolean> {
     let isValid = true;
     for (const protocol of Object.keys(anchors)) {
-      for (const chainId of Object.keys(anchors[protocol])) {
-        const anchor = anchors[protocol][chainId];
-        const provider = new JsonRpcProvider(anchor.nodeUrl);
+      if (protocol === Protocol.ETHEREUM) {
+        for (const chainId of Object.keys(anchors[protocol])) {
+          const anchor = anchors[protocol][chainId];
+          const provider = new JsonRpcProvider(anchor.nodeUrl);
 
-        const tx = await provider.getTransaction(
-          this.addHexPrefix(anchor.transactionId)
-        );
+          const tx = await provider.getTransaction(
+            this.addHexPrefix(anchor.transactionId)
+          );
 
-        anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
+          anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
 
-        const merkleTools = new MerkleTools({
-          hashType: 'SHA3-512'
-        });
+          const merkleTools = new MerkleTools({
+            hashType: 'SHA3-512'
+          });
 
-        const validProof = merkleTools.validateProof(
-          anchor.proof,
-          dataHash,
-          anchor.merkleRoot
-        );
+          const validProof = merkleTools.validateProof(
+            anchor.proof,
+            dataHash,
+            anchor.merkleRoot
+          );
 
-        isValid = isValid && anchor.exists && validProof;
+          isValid = isValid && anchor.exists && validProof;
+        }
+      } else {
+        for (const networkName of Object.keys(anchors[protocol])) {
+          console.log(anchors[protocol]);
+          console.log('succcesfully anchored!');
+          // bitcoinJs.Transaction.fromHex(anchor.transactionId);
+          isValid = true;
+          console.log('It works till here');
+
+          console.log('But not till here');
+          const anchor = anchors[protocol][networkName];
+          try {
+            const txId = anchor.transactionId;
+            const tx = await Axios.get(this.buildTxUrl(baseUrl, txId));
+            console.log(anchor, tx, 'ello');
+            console.log(anchor, networkName);
+          } catch (error) {
+            console.log(error);
+          }
+        }
       }
     }
 
@@ -150,9 +188,10 @@ export class CertiMintValidation {
 
   private async validateSignatures(
     signatures: any,
-    ethereumMainnetNodeUrl: string
+    baseUrl: string,
+    protocol: Protocol
   ): Promise<boolean> {
-    const signatureProvider = new JsonRpcProvider(ethereumMainnetNodeUrl);
+    const signatureProvider = new JsonRpcProvider(baseUrl);
     let isValid = true;
     for (const protocol of Object.keys(signatures)) {
       for (const address of Object.keys(signatures[protocol])) {
@@ -204,5 +243,9 @@ export class CertiMintValidation {
       };
       reader.readAsArrayBuffer(file);
     });
+  }
+
+  private buildTxUrl(baseUrl: string, txId: string) {
+    return `${baseUrl}/txs/${txId}`;
   }
 }
