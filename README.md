@@ -11,6 +11,7 @@ npm install --save @settlemint/certimint-validate
 ## Usage
 
 ```typescript
+
 import { CertiMintValidation } from '@settlemint/certimint-validate';
 
 const certiMintValidation = new CertiMintValidation(
@@ -19,6 +20,6 @@ const certiMintValidation = new CertiMintValidation(
 );
 isValid = await certiMintValidation.validateSeal(
   mySealObject,
-  'https://mainnet.infura.io'// or https://api.blockcypher.com/v1/btc/main for the bitcoin mainnet
+  'https://mainnet.infura.io' // or https://api.blockcypher.com/v1/btc/main for the bitcoin mainnet
 );
 ```
