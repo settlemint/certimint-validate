@@ -1,8 +1,8 @@
 import MerkleTools from '@settlemint/merkle-tools';
+import Axios from 'axios';
 import { JsonRpcProvider } from 'ethers/providers/json-rpc-provider';
 import { sha3_512 } from 'js-sha3';
 import { Readable } from 'stream';
-import Axios from 'axios';
 
 export enum Protocol {
   BITCOIN = 'BITCOIN',
@@ -62,12 +62,19 @@ export interface ISignInvites {
 }
 
 export class CertiMintValidation {
+  public protocol: string;
+  public apiKey: string;
+
+  constructor(protocol: Protocol = Protocol.ETHEREUM, apiKey: string = null) {
+    this.protocol = protocol;
+    this.apiKey = apiKey;
+  }
+
   public async validateSealAndData(
     seal: ISeal,
     data: string,
     dataType: DataType,
-    baseUrl: string = 'https://mainnet.infura.io',
-    protocol: Protocol = Protocol.ETHEREUM
+    baseUrl: string = 'https://mainnet.infura.io'
   ): Promise<boolean> {
     const hash = await this.hashForData(data, dataType);
     return hash === seal.dataHash && this.validateSeal(seal, baseUrl);
@@ -75,24 +82,19 @@ export class CertiMintValidation {
 
   public async validateSeal(
     seal: ISeal,
-    baseUrl: string = 'https://mainnet.infura.io',
-    protocol: Protocol = Protocol.ETHEREUM
+    baseUrl: string = 'https://mainnet.infura.io'
   ): Promise<boolean> {
-    console.log(baseUrl, protocol);
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash,
-      protocol,
       baseUrl
     );
 
-    const validSignatures = await this.validateSignatures(
-      seal.signatures,
-      baseUrl,
-      protocol
-    );
-    // return validAnchors && validSignatures;
-    return true;
+    let validSignatures = true;
+    if (this.protocol === Protocol.ETHEREUM) {
+      validSignatures = await this.validateSignatures(seal.signatures, baseUrl);
+    }
+    return validAnchors && validSignatures;
   }
 
   private async hashForData(
@@ -133,12 +135,11 @@ export class CertiMintValidation {
   private async validateAnchors(
     anchors: any,
     dataHash: string,
-    protocol: Protocol,
     baseUrl: string
   ): Promise<boolean> {
-    let isValid = true;
+    let isValid = false;
     for (const protocol of Object.keys(anchors)) {
-      if (protocol === Protocol.ETHEREUM) {
+      if (this.protocol === Protocol.ETHEREUM) {
         for (const chainId of Object.keys(anchors[protocol])) {
           const anchor = anchors[protocol][chainId];
           const provider = new JsonRpcProvider(anchor.nodeUrl);
@@ -159,24 +160,44 @@ export class CertiMintValidation {
             anchor.merkleRoot
           );
 
-          isValid = isValid && anchor.exists && validProof;
+          isValid = anchor.exists && validProof;
         }
       } else {
         for (const networkName of Object.keys(anchors[protocol])) {
-          console.log(anchors[protocol]);
-          console.log('succcesfully anchored!');
-          // bitcoinJs.Transaction.fromHex(anchor.transactionId);
-          isValid = true;
-          console.log('It works till here');
-
-          console.log('But not till here');
           const anchor = anchors[protocol][networkName];
           try {
             const txId = anchor.transactionId;
             const tx = await Axios.get(this.buildTxUrl(baseUrl, txId));
-            console.log(anchor, tx, 'ello');
+
+            const txOutputs = tx.data.outputs;
+            let merkleRoot: string;
+            for (const output of txOutputs) {
+              if (output.data_hex !== undefined && output.data_hex != null) {
+                merkleRoot = output.data_hex;
+              }
+            }
+
+            anchor.exists = merkleRoot === anchor.merkleRoot;
+
+            const merkleTools = new MerkleTools({
+              hashType: 'SHA3-512'
+            });
+
+            const validProof = merkleTools.validateProof(
+              anchor.proof,
+              dataHash,
+              anchor.merkleRoot
+            );
+
+            isValid = anchor.exists && validProof;
           } catch (error) {
-            console.log(error);
+            if (error.response !== undefined && error.response.status === 429) {
+              throw new Error(
+                'Too many request to the blockcypher api, please add an apikey or upgrade your blockcypher plan'
+              );
+            } else {
+              throw error;
+            }
           }
         }
       }
@@ -187,8 +208,7 @@ export class CertiMintValidation {
 
   private async validateSignatures(
     signatures: any,
-    baseUrl: string,
-    protocol: Protocol
+    baseUrl: string
   ): Promise<boolean> {
     const signatureProvider = new JsonRpcProvider(baseUrl);
     let isValid = true;
@@ -245,6 +265,7 @@ export class CertiMintValidation {
   }
 
   private buildTxUrl(baseUrl: string, txId: string) {
-    return `${baseUrl}/txs/${txId}`;
+    const apiKey = this.apiKey !== null ? `?token=${this.apiKey}` : '';
+    return `${baseUrl}/txs/${txId}${apiKey}`;
   }
 }
