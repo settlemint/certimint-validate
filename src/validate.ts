@@ -137,7 +137,7 @@ export class CertiMintValidation {
     dataHash: string,
     baseUrl: string
   ): Promise<boolean> {
-    let isValid = false;
+    let isValid = true;
     for (const protocol of Object.keys(anchors)) {
       if (this.protocol === Protocol.ETHEREUM) {
         for (const chainId of Object.keys(anchors[protocol])) {
@@ -160,7 +160,7 @@ export class CertiMintValidation {
             anchor.merkleRoot
           );
 
-          isValid = anchor.exists && validProof;
+          isValid = isValid && anchor.exists && validProof;
         }
       } else {
         for (const networkName of Object.keys(anchors[protocol])) {
@@ -189,7 +189,7 @@ export class CertiMintValidation {
               anchor.merkleRoot
             );
 
-            isValid = anchor.exists && validProof;
+            isValid = isValid && anchor.exists && validProof;
           } catch (error) {
             if (error.response !== undefined && error.response.status === 429) {
               throw new Error(
