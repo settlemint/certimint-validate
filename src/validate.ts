@@ -29,15 +29,22 @@ export interface ISeal {
   sealed: string;
 }
 
+export interface IAnchor {
+  transactionId: string;
+  nodeUrl: string;
+  explorer: string;
+  merkleRoot: string;
+  proof: IProof[];
+  exists?: boolean;
+}
+
 export interface IAnchors {
   ethereum?: {
-    [networkId: string]: {
-      transactionId: string;
-      nodeUrl: string;
-      explorer: string;
-      merkleRoot: string;
-      proof: IProof[];
-    };
+    [networkId: string]: IAnchor;
+  };
+  bitcoin?: {
+    mainnet?: IAnchor;
+    testnet?: IAnchor;
   };
 }
 
@@ -136,7 +143,7 @@ export class CertiMintValidation {
   }
 
   private async validateAnchors(
-    anchors: any,
+    anchors: IAnchors,
     dataHash: string,
     ethereumUrl: string,
     bitcoinUrl: string
@@ -145,19 +152,19 @@ export class CertiMintValidation {
     for (const protocol of Object.keys(anchors)) {
       switch (protocol) {
         case Protocol.ETHEREUM:
-          isValid = await this.validateEthereumAnchor(
-            anchors,
-            dataHash,
-            isValid
-          );
+          isValid =
+            isValid &&
+            (await this.validateEthereumAnchor(anchors, dataHash, isValid));
           break;
         case Protocol.BITCOIN:
-          isValid = await this.validateBitcoinAnchor(
-            anchors,
-            dataHash,
-            bitcoinUrl,
-            isValid
-          );
+          isValid =
+            isValid &&
+            (await this.validateBitcoinAnchor(
+              anchors,
+              dataHash,
+              bitcoinUrl,
+              isValid
+            ));
           break;
       }
     }
@@ -166,7 +173,7 @@ export class CertiMintValidation {
   }
 
   private async validateEthereumAnchor(
-    anchors: any,
+    anchors: IAnchors,
     dataHash: string,
     isValid: boolean
   ) {
@@ -195,7 +202,7 @@ export class CertiMintValidation {
   }
 
   private async validateBitcoinAnchor(
-    anchors: any,
+    anchors: IAnchors,
     dataHash: string,
     baseUrl: string,
     isValid: boolean
@@ -240,7 +247,7 @@ export class CertiMintValidation {
   }
 
   private async validateSignatures(
-    signatures: any,
+    signatures: ISignatures,
     baseUrl: string
   ): Promise<boolean> {
     const signatureProvider = new JsonRpcProvider(baseUrl);
