@@ -1,18 +1,17 @@
 import MerkleTools from '@settlemint/merkle-tools';
+import Axios from 'axios';
 import { JsonRpcProvider } from 'ethers/providers/json-rpc-provider';
 import { sha3_512 } from 'js-sha3';
 import { Readable } from 'stream';
-import { AbstractResourceSchema } from '../../mint/dapi/src/webserver/abstract-resource';
-import Axios from 'axios';
 
 export enum Protocol {
-  BITCOIN = 'BITCOIN',
-  ETHEREUM = 'ETHEREUM'
+  BITCOIN = 'bitcoin',
+  ETHEREUM = 'ethereum'
 }
 
 export enum NetworkName {
-  testnet = 'testnet',
-  mainnet = 'mainnet'
+  MAINNET = 'mainnet',
+  TESTNET = 'testnet'
 }
 
 export enum DataType {
@@ -30,15 +29,22 @@ export interface ISeal {
   sealed: string;
 }
 
+export interface IAnchor {
+  transactionId: string;
+  nodeUrl: string;
+  explorer: string;
+  merkleRoot: string;
+  proof: IProof[];
+  exists?: boolean;
+}
+
 export interface IAnchors {
   ethereum?: {
-    [networkId: string]: {
-      transactionId: string;
-      nodeUrl: string;
-      explorer: string;
-      merkleRoot: string;
-      proof: IProof[];
-    };
+    [networkId: string]: IAnchor;
+  };
+  bitcoin?: {
+    mainnet?: IAnchor;
+    testnet?: IAnchor;
   };
 }
 
@@ -63,36 +69,42 @@ export interface ISignInvites {
 }
 
 export class CertiMintValidation {
+  public apiKey: string;
+
+  constructor(apiKey: string = null) {
+    this.apiKey = apiKey;
+  }
+
   public async validateSealAndData(
     seal: ISeal,
     data: string,
     dataType: DataType,
-    baseUrl: string = 'https://mainnet.infura.io',
-    protocol: Protocol = Protocol.ETHEREUM
+    ethereumUrl: string = 'https://mainnet.infura.io',
+    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const hash = await this.hashForData(data, dataType);
-    return hash === seal.dataHash && this.validateSeal(seal, baseUrl);
+    return (
+      hash === seal.dataHash && this.validateSeal(seal, ethereumUrl, bitcoinUrl)
+    );
   }
 
   public async validateSeal(
     seal: ISeal,
-    baseUrl: string = 'https://mainnet.infura.io',
-    protocol: Protocol = Protocol.ETHEREUM
+    ethereumUrl: string = 'https://mainnet.infura.io',
+    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash,
-      protocol,
-      baseUrl
+      ethereumUrl,
+      bitcoinUrl
     );
 
     const validSignatures = await this.validateSignatures(
       seal.signatures,
-      baseUrl,
-      protocol
+      ethereumUrl
     );
-    // return validAnchors && validSignatures;
-    return true;
+    return validAnchors && validSignatures;
   }
 
   private async hashForData(
@@ -131,65 +143,112 @@ export class CertiMintValidation {
   }
 
   private async validateAnchors(
-    anchors: any,
+    anchors: IAnchors,
     dataHash: string,
-    protocol: Protocol,
-    baseUrl: string
+    ethereumUrl: string,
+    bitcoinUrl: string
   ): Promise<boolean> {
     let isValid = true;
     for (const protocol of Object.keys(anchors)) {
-      if (protocol === Protocol.ETHEREUM) {
-        for (const chainId of Object.keys(anchors[protocol])) {
-          const anchor = anchors[protocol][chainId];
-          const provider = new JsonRpcProvider(anchor.nodeUrl);
-
-          const tx = await provider.getTransaction(
-            this.addHexPrefix(anchor.transactionId)
-          );
-
-          anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
-
-          const merkleTools = new MerkleTools({
-            hashType: 'SHA3-512'
-          });
-
-          const validProof = merkleTools.validateProof(
-            anchor.proof,
-            dataHash,
-            anchor.merkleRoot
-          );
-
-          isValid = isValid && anchor.exists && validProof;
-        }
-      } else {
-        for (const networkName of Object.keys(anchors[protocol])) {
-          console.log(anchors[protocol]);
-          console.log('succcesfully anchored!');
-          // bitcoinJs.Transaction.fromHex(anchor.transactionId);
-          isValid = true;
-          console.log('It works till here');
-
-          console.log('But not till here');
-          const anchor = anchors[protocol][networkName];
-          try {
-            const txId = anchor.transactionId;
-            const tx = await Axios.get(this.buildTxUrl(baseUrl, txId));
-            console.log(anchor, tx, 'ello');
-            console.log(anchor, networkName);
-          } catch (error) {
-            console.log(error);
-          }
-        }
+      switch (protocol) {
+        case Protocol.ETHEREUM:
+          isValid =
+            isValid &&
+            (await this.validateEthereumAnchor(anchors, dataHash, isValid));
+          break;
+        case Protocol.BITCOIN:
+          isValid =
+            isValid &&
+            (await this.validateBitcoinAnchor(
+              anchors,
+              dataHash,
+              bitcoinUrl,
+              isValid
+            ));
+          break;
       }
     }
 
     return isValid;
   }
 
-  private async validateSignatures(
-    signatures: any,
+  private async validateEthereumAnchor(
+    anchors: IAnchors,
+    dataHash: string,
+    isValid: boolean
+  ) {
+    for (const chainId of Object.keys(anchors[Protocol.ETHEREUM])) {
+      const anchor = anchors[Protocol.ETHEREUM][chainId];
+      const provider = new JsonRpcProvider(anchor.nodeUrl);
+
+      const tx = await provider.getTransaction(
+        this.addHexPrefix(anchor.transactionId)
+      );
+
+      anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
+
+      const merkleTools = new MerkleTools({
+        hashType: 'SHA3-512'
+      });
+
+      const validProof = merkleTools.validateProof(
+        anchor.proof,
+        dataHash,
+        anchor.merkleRoot
+      );
+
+      return isValid && anchor.exists && validProof;
+    }
+  }
+
+  private async validateBitcoinAnchor(
+    anchors: IAnchors,
+    dataHash: string,
     baseUrl: string,
-    protocol: Protocol
+    isValid: boolean
+  ) {
+    for (const networkName of Object.keys(anchors[Protocol.BITCOIN])) {
+      const anchor = anchors[Protocol.BITCOIN][networkName];
+      try {
+        const txId = anchor.transactionId;
+        const tx = await Axios.get(this.buildTxUrl(baseUrl, txId));
+
+        const txOutputs = tx.data.outputs;
+        let merkleRoot: string;
+        for (const output of txOutputs) {
+          if (output.data_hex !== undefined && output.data_hex != null) {
+            merkleRoot = output.data_hex;
+          }
+        }
+
+        anchor.exists = merkleRoot === anchor.merkleRoot;
+
+        const merkleTools = new MerkleTools({
+          hashType: 'SHA3-512'
+        });
+
+        const validProof = merkleTools.validateProof(
+          anchor.proof,
+          dataHash,
+          anchor.merkleRoot
+        );
+
+        return isValid && anchor.exists && validProof;
+      } catch (error) {
+        if (error.response !== undefined && error.response.status === 429) {
+          throw new Error(
+            'Too many request to the blockcypher api, please add an apikey or upgrade your blockcypher plan'
+          );
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+
+  private async validateSignatures(
+    signatures: ISignatures,
+    baseUrl: string
   ): Promise<boolean> {
     const signatureProvider = new JsonRpcProvider(baseUrl);
     let isValid = true;
@@ -246,6 +305,7 @@ export class CertiMintValidation {
   }
 
   private buildTxUrl(baseUrl: string, txId: string) {
-    return `${baseUrl}/txs/${txId}`;
+    const apiKey = this.apiKey !== null ? `?token=${this.apiKey}` : '';
+    return `${baseUrl}/txs/${txId}${apiKey}`;
   }
 }

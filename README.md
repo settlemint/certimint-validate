@@ -11,12 +11,14 @@ npm install --save @settlemint/certimint-validate
 ## Usage
 
 ```typescript
+import { CertiMintValidation } from '@settlemint/certimint-validate';
 
-    import { CertiMintValidation } from '@settlemint/certimint-validate';
+const bitcoinApiKey = 'e341cb773bff270e539690b93fb69f32'; // optional, your api key from blockcypher
 
-    const certiMintValidation = new CertiMintValidation();
-    isValid = await certiMintValidation.validateSeal(
-      mySealObject,
-      'https://mainnet.infura.io'
-    );
+const certiMintValidation = new CertiMintValidation(bitcoinApiKey);
+isValid = await certiMintValidation.validateSeal(
+  mySealObject,
+  'https://mainnet.infura.io', // api url for ethereum
+  'https://api.blockcypher.com/v1/btc/main' // api url for bitcoin
+);
 ```
