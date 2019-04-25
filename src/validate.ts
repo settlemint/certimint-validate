@@ -72,25 +72,30 @@ export class CertiMintValidation {
     seal: ISeal,
     data: string,
     dataType: DataType,
-    baseUrl: string = 'https://mainnet.infura.io'
+    ethereumUrl: string = 'https://mainnet.infura.io',
+    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const hash = await this.hashForData(data, dataType);
-    return hash === seal.dataHash && this.validateSeal(seal, baseUrl);
+    return (
+      hash === seal.dataHash && this.validateSeal(seal, ethereumUrl, bitcoinUrl)
+    );
   }
 
   public async validateSeal(
     seal: ISeal,
-    baseUrl: string = 'https://mainnet.infura.io'
+    ethereumUrl: string = 'https://mainnet.infura.io',
+    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash,
-      baseUrl
+      ethereumUrl,
+      bitcoinUrl
     );
 
     const validSignatures = await this.validateSignatures(
       seal.signatures,
-      baseUrl
+      ethereumUrl
     );
     return validAnchors && validSignatures;
   }
@@ -133,7 +138,8 @@ export class CertiMintValidation {
   private async validateAnchors(
     anchors: any,
     dataHash: string,
-    baseUrl: string
+    ethereumUrl: string,
+    bitcoinUrl: string
   ): Promise<boolean> {
     let isValid = true;
     for (const protocol of Object.keys(anchors)) {
@@ -149,7 +155,7 @@ export class CertiMintValidation {
           isValid = await this.validateBitcoinAnchor(
             anchors,
             dataHash,
-            baseUrl,
+            bitcoinUrl,
             isValid
           );
           break;
@@ -194,7 +200,7 @@ export class CertiMintValidation {
     baseUrl: string,
     isValid: boolean
   ) {
-    for (const networkName of Object.keys(Protocol.BITCOIN)) {
+    for (const networkName of Object.keys(anchors[Protocol.BITCOIN])) {
       const anchor = anchors[Protocol.BITCOIN][networkName];
       try {
         const txId = anchor.transactionId;
