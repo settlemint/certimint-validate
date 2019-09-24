@@ -271,37 +271,40 @@ export class CertiMintValidation {
   private async validateSignInvites(
     signInvites: ISignInvites
   ): Promise<boolean> {
-    const signInviteAnchors = signInvites.anchors;
-    let isValid = true;
-    for (const protocol of Object.keys(signInviteAnchors)) {
-      for (const chainId of Object.keys(signInviteAnchors[protocol])) {
-        //This should technically not be neccessary since we only anchor signinvites on Ethereum
-        if (protocol === Protocol.ETHEREUM) {
-          const signInvite = signInviteAnchors[protocol][chainId];
-          const signInviteProvider = new JsonRpcProvider(signInvite.nodeUrl);
-          const tx = await signInviteProvider.getTransaction(
-            this.addHexPrefix(signInvite.transactionId)
-          );
+    if (signInvites && signInvites.anchors) {
+      const signInviteAnchors = signInvites.anchors;
+      let isValid = true;
+      for (const protocol of Object.keys(signInviteAnchors)) {
+        for (const chainId of Object.keys(signInviteAnchors[protocol])) {
+          //This should technically not be neccessary since we only anchor signinvites on Ethereum
+          if (protocol === Protocol.ETHEREUM) {
+            const signInvite = signInviteAnchors[protocol][chainId];
+            const signInviteProvider = new JsonRpcProvider(signInvite.nodeUrl);
+            const tx = await signInviteProvider.getTransaction(
+              this.addHexPrefix(signInvite.transactionId)
+            );
 
-          signInvite.exists =
-            tx.data === this.addHexPrefix(signInvite.merkleRoot);
+            signInvite.exists =
+              tx.data === this.addHexPrefix(signInvite.merkleRoot);
 
-          const merkleTools = new MerkleTools({
-            hashType: 'SHA3-512',
-          });
+            const merkleTools = new MerkleTools({
+              hashType: 'SHA3-512',
+            });
 
-          const validProof = merkleTools.validateProof(
-            signInvite.proof,
-            signInvite.hash,
-            signInvite.merkleRoot
-          );
+            const validProof = merkleTools.validateProof(
+              signInvite.proof,
+              signInvite.hash,
+              signInvite.merkleRoot
+            );
 
-          isValid = isValid && validProof && signInvite.exists;
+            isValid = isValid && validProof && signInvite.exists;
+          }
         }
       }
-    }
 
-    return isValid;
+      return isValid;
+    }
+    return true;
   }
 
   private addHexPrefix(fromValue: string) {
