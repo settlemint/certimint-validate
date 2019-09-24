@@ -23,7 +23,7 @@ export enum DataType {
 export interface ISeal {
   id: string;
   dataHash: string;
-  anchors: IAnchors;
+  anchors: IAnchors<IAnchor>;
   signatures?: ISignatures;
   signinvites?: ISignInvites;
   sealed: string;
@@ -38,13 +38,17 @@ export interface IAnchor {
   exists?: boolean;
 }
 
-export interface IAnchors {
+export interface ISignInviteAnchor extends IAnchor {
+  hash: string;
+}
+
+export interface IAnchors<Type> {
   ethereum?: {
-    [networkId: string]: IAnchor;
+    [networkId: string]: Type;
   };
   bitcoin?: {
-    mainnet?: IAnchor;
-    testnet?: IAnchor;
+    mainnet?: Type;
+    testnet?: Type;
   };
 }
 
@@ -66,7 +70,7 @@ export interface ISignatures {
 }
 
 export interface ISignInvites {
-  anchors: IAnchors;
+  anchors: IAnchors<ISignInviteAnchor>;
 }
 
 export class CertiMintValidation {
@@ -80,7 +84,7 @@ export class CertiMintValidation {
     seal: ISeal,
     data: string,
     dataType: DataType,
-    ethereumUrl: string = 'https://mainnet.infura.io',
+    ethereumUrl?: string,
     bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const hash = await this.hashForData(data, dataType);
@@ -91,13 +95,12 @@ export class CertiMintValidation {
 
   public async validateSeal(
     seal: ISeal,
-    ethereumUrl: string = 'https://mainnet.infura.io',
+    ethereumUrl?: string, //TODO: this should be removed since this is never used, but this will break legacy systems
     bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash,
-      ethereumUrl,
       bitcoinUrl
     );
 
@@ -145,7 +148,6 @@ export class CertiMintValidation {
   private async validateAnchors(
     anchors: IAnchors,
     dataHash: string,
-    ethereumUrl: string,
     bitcoinUrl: string
   ): Promise<boolean> {
     let isValid = true;
@@ -288,14 +290,13 @@ export class CertiMintValidation {
             hashType: 'SHA3-512',
           });
 
-          // TODO: fix validproof for signinvites
-          // const validProof = merkleTools.validateProof(
-          //   signInvite.proof,
-          //   dataHash,
-          //   signInvite.merkleRoot
-          // );
+          const validProof = merkleTools.validateProof(
+            signInvite.proof,
+            signInvite.hash,
+            signInvite.merkleRoot
+          );
 
-          isValid = isValid && signInvite.exists;
+          isValid = isValid && validProof && signInvite.exists;
         }
       }
     }
