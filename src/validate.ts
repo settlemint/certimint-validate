@@ -6,18 +6,18 @@ import { Readable } from 'stream';
 
 export enum Protocol {
   BITCOIN = 'bitcoin',
-  ETHEREUM = 'ethereum'
+  ETHEREUM = 'ethereum',
 }
 
 export enum NetworkName {
   MAINNET = 'mainnet',
-  TESTNET = 'testnet'
+  TESTNET = 'testnet',
 }
 
 export enum DataType {
   STRING = 'STRING',
   FILE = 'FILE',
-  HASH = 'HASH'
+  HASH = 'HASH',
 }
 
 export interface ISeal {
@@ -57,6 +57,7 @@ export interface ISignatures {
   ethereum?: {
     [signerAddress: string]: {
       transactionId: string;
+      nodeUrl: string;
       explorer: string;
       signature: string;
       signed: string;
@@ -100,11 +101,10 @@ export class CertiMintValidation {
       bitcoinUrl
     );
 
-    const validSignatures = await this.validateSignatures(
-      seal.signatures,
-      ethereumUrl
-    );
-    return validAnchors && validSignatures;
+    const validSignatures = await this.validateSignatures(seal.signatures);
+    const validSignInvites = await this.validateSignInvites(seal.signinvites);
+
+    return validAnchors && validSignatures && validSignInvites;
   }
 
   private async hashForData(
@@ -188,7 +188,7 @@ export class CertiMintValidation {
       anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
 
       const merkleTools = new MerkleTools({
-        hashType: 'SHA3-512'
+        hashType: 'SHA3-512',
       });
 
       const validProof = merkleTools.validateProof(
@@ -224,7 +224,7 @@ export class CertiMintValidation {
         anchor.exists = merkleRoot === anchor.merkleRoot;
 
         const merkleTools = new MerkleTools({
-          hashType: 'SHA3-512'
+          hashType: 'SHA3-512',
         });
 
         const validProof = merkleTools.validateProof(
@@ -246,20 +246,57 @@ export class CertiMintValidation {
     }
   }
 
-  private async validateSignatures(
-    signatures: ISignatures,
-    baseUrl: string
-  ): Promise<boolean> {
-    const signatureProvider = new JsonRpcProvider(baseUrl);
+  private async validateSignatures(signatures: ISignatures): Promise<boolean> {
     let isValid = true;
     for (const protocol of Object.keys(signatures)) {
       for (const address of Object.keys(signatures[protocol])) {
-        const signature = signatures[protocol][address];
-        const tx = await signatureProvider.getTransaction(
-          this.addHexPrefix(signature.transactionId)
-        );
-        signature.isValid = tx.data === this.addHexPrefix(signature.signature);
-        isValid = isValid && signature.isValid;
+        //This should technically not be neccessary since we only anchor signatures on Ethereum
+        if (protocol === Protocol.ETHEREUM) {
+          const signature = signatures[protocol][address];
+          const signatureProvider = new JsonRpcProvider(signature.nodeUrl);
+          const tx = await signatureProvider.getTransaction(
+            this.addHexPrefix(signature.transactionId)
+          );
+          isValid =
+            isValid && tx.data === this.addHexPrefix(signature.signature);
+        }
+      }
+    }
+
+    return isValid;
+  }
+
+  private async validateSignInvites(
+    signInvites: ISignInvites
+  ): Promise<boolean> {
+    const signInviteAnchors = signInvites.anchors;
+    let isValid = true;
+    for (const protocol of Object.keys(signInviteAnchors)) {
+      for (const chainId of Object.keys(signInviteAnchors[protocol])) {
+        //This should technically not be neccessary since we only anchor signinvites on Ethereum
+        if (protocol === Protocol.ETHEREUM) {
+          const signInvite = signInviteAnchors[protocol][chainId];
+          const signInviteProvider = new JsonRpcProvider(signInvite.nodeUrl);
+          const tx = await signInviteProvider.getTransaction(
+            this.addHexPrefix(signInvite.transactionId)
+          );
+
+          signInvite.exists =
+            tx.data === this.addHexPrefix(signInvite.merkleRoot);
+
+          const merkleTools = new MerkleTools({
+            hashType: 'SHA3-512',
+          });
+
+          // TODO: fix validproof for signinvites
+          // const validProof = merkleTools.validateProof(
+          //   signInvite.proof,
+          //   dataHash,
+          //   signInvite.merkleRoot
+          // );
+
+          isValid = isValid && signInvite.exists;
+        }
       }
     }
 
