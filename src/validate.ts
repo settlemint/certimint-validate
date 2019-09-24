@@ -295,12 +295,17 @@ export class CertiMintValidation {
             const merkleTools = new MerkleTools({
               hashType: 'SHA3-512',
             });
+            let validProof = true;
 
-            const validProof = merkleTools.validateProof(
-              signInvite.proof,
-              signInvite.hash,
-              signInvite.merkleRoot
-            );
+            for (const inviteId of Object.keys(signInvite.invites)) {
+              const inviteAnchor = signInvite.invites[inviteId];
+
+              validProof = merkleTools.validateProof(
+                inviteAnchor.proof,
+                inviteAnchor.hash,
+                signInvite.merkleRoot
+              );
+            }
 
             isValid = isValid && validProof && signInvite.exists;
           }
