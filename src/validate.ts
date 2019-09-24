@@ -6,24 +6,24 @@ import { Readable } from 'stream';
 
 export enum Protocol {
   BITCOIN = 'bitcoin',
-  ETHEREUM = 'ethereum'
+  ETHEREUM = 'ethereum',
 }
 
 export enum NetworkName {
   MAINNET = 'mainnet',
-  TESTNET = 'testnet'
+  TESTNET = 'testnet',
 }
 
 export enum DataType {
   STRING = 'STRING',
   FILE = 'FILE',
-  HASH = 'HASH'
+  HASH = 'HASH',
 }
 
 export interface ISeal {
   id: string;
   dataHash: string;
-  anchors: IAnchors;
+  anchors: IAnchors<IAnchor>;
   signatures?: ISignatures;
   signinvites?: ISignInvites;
   sealed: string;
@@ -38,13 +38,22 @@ export interface IAnchor {
   exists?: boolean;
 }
 
-export interface IAnchors {
+export interface IInviteAnchor extends IAnchor {
+  invites?: { [inviteId: string]: ISignInvite };
+}
+
+export interface ISignInvite {
+  proof: IProof[];
+  hash: string;
+}
+
+export interface IAnchors<Type> {
   ethereum?: {
-    [networkId: string]: IAnchor;
+    [networkId: string]: Type;
   };
   bitcoin?: {
-    mainnet?: IAnchor;
-    testnet?: IAnchor;
+    mainnet?: Type;
+    testnet?: Type;
   };
 }
 
@@ -57,6 +66,7 @@ export interface ISignatures {
   ethereum?: {
     [signerAddress: string]: {
       transactionId: string;
+      nodeUrl: string;
       explorer: string;
       signature: string;
       signed: string;
@@ -65,7 +75,7 @@ export interface ISignatures {
 }
 
 export interface ISignInvites {
-  anchors: IAnchors;
+  anchors: IAnchors<IInviteAnchor>;
 }
 
 export class CertiMintValidation {
@@ -79,7 +89,7 @@ export class CertiMintValidation {
     seal: ISeal,
     data: string,
     dataType: DataType,
-    ethereumUrl: string = 'https://mainnet.infura.io',
+    ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
     bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const hash = await this.hashForData(data, dataType);
@@ -90,21 +100,19 @@ export class CertiMintValidation {
 
   public async validateSeal(
     seal: ISeal,
-    ethereumUrl: string = 'https://mainnet.infura.io',
+    ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
     bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash,
-      ethereumUrl,
       bitcoinUrl
     );
 
-    const validSignatures = await this.validateSignatures(
-      seal.signatures,
-      ethereumUrl
-    );
-    return validAnchors && validSignatures;
+    const validSignatures = await this.validateSignatures(seal.signatures);
+    const validSignInvites = await this.validateSignInvites(seal.signinvites);
+
+    return validAnchors && validSignatures && validSignInvites;
   }
 
   private async hashForData(
@@ -143,9 +151,8 @@ export class CertiMintValidation {
   }
 
   private async validateAnchors(
-    anchors: IAnchors,
+    anchors: IAnchors<IAnchor>,
     dataHash: string,
-    ethereumUrl: string,
     bitcoinUrl: string
   ): Promise<boolean> {
     let isValid = true;
@@ -173,7 +180,7 @@ export class CertiMintValidation {
   }
 
   private async validateEthereumAnchor(
-    anchors: IAnchors,
+    anchors: IAnchors<IAnchor>,
     dataHash: string,
     isValid: boolean
   ) {
@@ -188,7 +195,7 @@ export class CertiMintValidation {
       anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
 
       const merkleTools = new MerkleTools({
-        hashType: 'SHA3-512'
+        hashType: 'SHA3-512',
       });
 
       const validProof = merkleTools.validateProof(
@@ -202,7 +209,7 @@ export class CertiMintValidation {
   }
 
   private async validateBitcoinAnchor(
-    anchors: IAnchors,
+    anchors: IAnchors<IAnchor>,
     dataHash: string,
     baseUrl: string,
     isValid: boolean
@@ -224,7 +231,7 @@ export class CertiMintValidation {
         anchor.exists = merkleRoot === anchor.merkleRoot;
 
         const merkleTools = new MerkleTools({
-          hashType: 'SHA3-512'
+          hashType: 'SHA3-512',
         });
 
         const validProof = merkleTools.validateProof(
@@ -246,24 +253,68 @@ export class CertiMintValidation {
     }
   }
 
-  private async validateSignatures(
-    signatures: ISignatures,
-    baseUrl: string
-  ): Promise<boolean> {
-    const signatureProvider = new JsonRpcProvider(baseUrl);
+  private async validateSignatures(signatures: ISignatures): Promise<boolean> {
     let isValid = true;
     for (const protocol of Object.keys(signatures)) {
       for (const address of Object.keys(signatures[protocol])) {
-        const signature = signatures[protocol][address];
-        const tx = await signatureProvider.getTransaction(
-          this.addHexPrefix(signature.transactionId)
-        );
-        signature.isValid = tx.data === this.addHexPrefix(signature.signature);
-        isValid = isValid && signature.isValid;
+        // This should technically not be neccessary since we only anchor signatures on Ethereum
+        if (protocol === Protocol.ETHEREUM) {
+          const signature = signatures[protocol][address];
+          const signatureProvider = new JsonRpcProvider(signature.nodeUrl);
+          const tx = await signatureProvider.getTransaction(
+            this.addHexPrefix(signature.transactionId)
+          );
+          isValid =
+            isValid && tx.data === this.addHexPrefix(signature.signature);
+        }
       }
     }
 
     return isValid;
+  }
+
+  private async validateSignInvites(
+    signInvites: ISignInvites
+  ): Promise<boolean> {
+    if (signInvites && signInvites.anchors) {
+      const signInviteAnchors = signInvites.anchors;
+      let isValid = true;
+      for (const protocol of Object.keys(signInviteAnchors)) {
+        for (const chainId of Object.keys(signInviteAnchors[protocol])) {
+          // This should technically not be neccessary since we only anchor signinvites on Ethereum
+          if (protocol === Protocol.ETHEREUM) {
+            const signInvite = signInviteAnchors[protocol][chainId];
+            const signInviteProvider = new JsonRpcProvider(signInvite.nodeUrl);
+            const tx = await signInviteProvider.getTransaction(
+              this.addHexPrefix(signInvite.transactionId)
+            );
+
+            signInvite.exists =
+              tx.data === this.addHexPrefix(signInvite.merkleRoot);
+
+            const merkleTools = new MerkleTools({
+              hashType: 'SHA3-512',
+            });
+            let validProof = true;
+
+            for (const inviteId of Object.keys(signInvite.invites)) {
+              const inviteAnchor = signInvite.invites[inviteId];
+
+              validProof = merkleTools.validateProof(
+                inviteAnchor.proof,
+                inviteAnchor.hash,
+                signInvite.merkleRoot
+              );
+            }
+
+            isValid = isValid && validProof && signInvite.exists;
+          }
+        }
+      }
+
+      return isValid;
+    }
+    return true;
   }
 
   private addHexPrefix(fromValue: string) {
