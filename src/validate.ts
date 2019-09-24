@@ -89,7 +89,7 @@ export class CertiMintValidation {
     seal: ISeal,
     data: string,
     dataType: DataType,
-    ethereumUrl?: string, //TODO: this should be removed since this is never used, but this will break legacy systems
+    ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
     bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const hash = await this.hashForData(data, dataType);
@@ -100,7 +100,7 @@ export class CertiMintValidation {
 
   public async validateSeal(
     seal: ISeal,
-    ethereumUrl?: string, //TODO: this should be removed since this is never used, but this will break legacy systems
+    ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
     bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const validAnchors = await this.validateAnchors(
@@ -257,7 +257,7 @@ export class CertiMintValidation {
     let isValid = true;
     for (const protocol of Object.keys(signatures)) {
       for (const address of Object.keys(signatures[protocol])) {
-        //This should technically not be neccessary since we only anchor signatures on Ethereum
+        // This should technically not be neccessary since we only anchor signatures on Ethereum
         if (protocol === Protocol.ETHEREUM) {
           const signature = signatures[protocol][address];
           const signatureProvider = new JsonRpcProvider(signature.nodeUrl);
@@ -281,7 +281,7 @@ export class CertiMintValidation {
       let isValid = true;
       for (const protocol of Object.keys(signInviteAnchors)) {
         for (const chainId of Object.keys(signInviteAnchors[protocol])) {
-          //This should technically not be neccessary since we only anchor signinvites on Ethereum
+          // This should technically not be neccessary since we only anchor signinvites on Ethereum
           if (protocol === Protocol.ETHEREUM) {
             const signInvite = signInviteAnchors[protocol][chainId];
             const signInviteProvider = new JsonRpcProvider(signInvite.nodeUrl);
