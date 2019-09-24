@@ -38,7 +38,12 @@ export interface IAnchor {
   exists?: boolean;
 }
 
-export interface ISignInviteAnchor extends IAnchor {
+export interface IInviteAnchor extends IAnchor {
+  invites?: { [inviteId: string]: ISignInvite };
+}
+
+export interface ISignInvite {
+  proof: IProof[];
   hash: string;
 }
 
@@ -70,7 +75,7 @@ export interface ISignatures {
 }
 
 export interface ISignInvites {
-  anchors: IAnchors<ISignInviteAnchor>;
+  anchors: IAnchors<IInviteAnchor>;
 }
 
 export class CertiMintValidation {
@@ -84,7 +89,7 @@ export class CertiMintValidation {
     seal: ISeal,
     data: string,
     dataType: DataType,
-    ethereumUrl?: string,
+    ethereumUrl?: string, //TODO: this should be removed since this is never used, but this will break legacy systems
     bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     const hash = await this.hashForData(data, dataType);
@@ -146,7 +151,7 @@ export class CertiMintValidation {
   }
 
   private async validateAnchors(
-    anchors: IAnchors,
+    anchors: IAnchors<IAnchor>,
     dataHash: string,
     bitcoinUrl: string
   ): Promise<boolean> {
@@ -175,7 +180,7 @@ export class CertiMintValidation {
   }
 
   private async validateEthereumAnchor(
-    anchors: IAnchors,
+    anchors: IAnchors<IAnchor>,
     dataHash: string,
     isValid: boolean
   ) {
@@ -204,7 +209,7 @@ export class CertiMintValidation {
   }
 
   private async validateBitcoinAnchor(
-    anchors: IAnchors,
+    anchors: IAnchors<IAnchor>,
     dataHash: string,
     baseUrl: string,
     isValid: boolean
