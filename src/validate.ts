@@ -97,17 +97,35 @@ export class CertiMintValidation {
     seal: ISeal,
     data: string,
     dataType: DataType,
-    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
-  ): Promise<SealStatus> {
+    ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
+    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main',
+    giveStatusBack?: boolean // add backwards compatibility
+  ): Promise<SealStatus | boolean> {
     const hash = await this.hashForData(data, dataType);
-    return hash === seal.dataHash && this.validateSeal(seal, bitcoinUrl);
+
+    const validationStatus = await this.validateSeal(
+      seal,
+      bitcoinUrl,
+      '',
+      true
+    );
+
+    if (giveStatusBack) {
+      return hash === seal.dataHash
+        ? validationStatus
+        : SealStatus.STATUS_FAILED;
+    }
+    return (
+      hash === seal.dataHash && validationStatus !== SealStatus.STATUS_FAILED
+    );
   }
 
   public async validateSeal(
     seal: ISeal,
     ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
-    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
-  ): Promise<SealStatus> {
+    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main',
+    giveStatusBack?: boolean // add backwards compatibility
+  ): Promise<SealStatus | boolean> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash,
@@ -117,22 +135,29 @@ export class CertiMintValidation {
     const validSignatures = await this.validateSignatures(seal.signatures);
     const validSignInvites = await this.validateSignInvites(seal.signinvites);
 
-    if (
-      validSignatures === SealStatus.STATUS_FAILED ||
-      validSignInvites === SealStatus.STATUS_FAILED ||
-      !validAnchors
-    ) {
+    if (giveStatusBack) {
+      if (
+        validSignatures === SealStatus.STATUS_FAILED ||
+        validSignInvites === SealStatus.STATUS_FAILED ||
+        !validAnchors
+      ) {
+        return SealStatus.STATUS_FAILED;
+      }
+
+      if (
+        validSignatures === SealStatus.STATUS_PENDING ||
+        validSignInvites === SealStatus.STATUS_PENDING
+      ) {
+        return SealStatus.STATUS_PENDING;
+      }
+
       return SealStatus.STATUS_FAILED;
     }
 
-    if (
-      validSignatures === SealStatus.STATUS_PENDING ||
-      validSignInvites === SealStatus.STATUS_PENDING
-    ) {
-      return SealStatus.STATUS_PENDING;
-    }
-
-    return validAnchors && validSignatures && validSignInvites;
+    return (
+      validSignatures !== SealStatus.STATUS_FAILED &&
+      validSignInvites !== SealStatus.STATUS_FAILED
+    );
   }
 
   private async hashForData(
