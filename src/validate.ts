@@ -20,6 +20,12 @@ export enum DataType {
   HASH = 'HASH',
 }
 
+export enum SealStatus {
+  STATUS_CONFIRMED = 'confirmed',
+  STATUS_FAILED = 'failed',
+  STATUS_PENDING = 'pending',
+}
+
 export interface ISeal {
   id: string;
   dataHash: string;
@@ -45,6 +51,7 @@ export interface IInviteAnchor extends IAnchor {
 export interface ISignInvite {
   proof: IProof[];
   hash: string;
+  transactionStatus: SealStatus;
 }
 
 export interface IAnchors<Type> {
@@ -70,6 +77,7 @@ export interface ISignatures {
       explorer: string;
       signature: string;
       signed: string;
+      transactionStatus: SealStatus;
     };
   };
 }
@@ -89,20 +97,17 @@ export class CertiMintValidation {
     seal: ISeal,
     data: string,
     dataType: DataType,
-    ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
     bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
-  ): Promise<boolean> {
+  ): Promise<SealStatus> {
     const hash = await this.hashForData(data, dataType);
-    return (
-      hash === seal.dataHash && this.validateSeal(seal, ethereumUrl, bitcoinUrl)
-    );
+    return hash === seal.dataHash && this.validateSeal(seal, bitcoinUrl);
   }
 
   public async validateSeal(
     seal: ISeal,
     ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
     bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
-  ): Promise<boolean> {
+  ): Promise<SealStatus> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash,
@@ -111,6 +116,21 @@ export class CertiMintValidation {
 
     const validSignatures = await this.validateSignatures(seal.signatures);
     const validSignInvites = await this.validateSignInvites(seal.signinvites);
+
+    if (
+      validSignatures === SealStatus.STATUS_FAILED ||
+      validSignInvites === SealStatus.STATUS_FAILED ||
+      !validAnchors
+    ) {
+      return SealStatus.STATUS_FAILED;
+    }
+
+    if (
+      validSignatures === SealStatus.STATUS_PENDING ||
+      validSignInvites === SealStatus.STATUS_PENDING
+    ) {
+      return SealStatus.STATUS_PENDING;
+    }
 
     return validAnchors && validSignatures && validSignInvites;
   }
@@ -253,8 +273,10 @@ export class CertiMintValidation {
     }
   }
 
-  private async validateSignatures(signatures: ISignatures): Promise<boolean> {
-    let isValid = true;
+  private async validateSignatures(
+    signatures: ISignatures
+  ): Promise<SealStatus> {
+    let isValid = SealStatus.STATUS_CONFIRMED;
     for (const protocol of Object.keys(signatures)) {
       for (const address of Object.keys(signatures[protocol])) {
         // This should technically not be neccessary since we only anchor signatures on Ethereum
@@ -264,8 +286,19 @@ export class CertiMintValidation {
           const tx = await signatureProvider.getTransaction(
             this.addHexPrefix(signature.transactionId)
           );
-          isValid =
-            isValid && tx.data === this.addHexPrefix(signature.signature);
+
+          if (tx) {
+            if (tx.data === this.addHexPrefix(signature.signature)) {
+              isValid =
+                isValid === SealStatus.STATUS_CONFIRMED
+                  ? SealStatus.STATUS_CONFIRMED
+                  : isValid;
+            }
+
+            return SealStatus.STATUS_FAILED;
+          }
+
+          isValid = SealStatus.STATUS_PENDING;
         }
       }
     }
@@ -275,10 +308,11 @@ export class CertiMintValidation {
 
   private async validateSignInvites(
     signInvites: ISignInvites
-  ): Promise<boolean> {
+  ): Promise<SealStatus> {
+    let isValid = SealStatus.STATUS_CONFIRMED;
+
     if (signInvites && signInvites.anchors) {
       const signInviteAnchors = signInvites.anchors;
-      let isValid = true;
       for (const protocol of Object.keys(signInviteAnchors)) {
         for (const chainId of Object.keys(signInviteAnchors[protocol])) {
           // This should technically not be neccessary since we only anchor signinvites on Ethereum
@@ -288,10 +322,19 @@ export class CertiMintValidation {
             const tx = await signInviteProvider.getTransaction(
               this.addHexPrefix(signInvite.transactionId)
             );
+            if (tx) {
+              signInvite.exists =
+                tx.data === this.addHexPrefix(signInvite.merkleRoot);
 
-            signInvite.exists =
-              tx.data === this.addHexPrefix(signInvite.merkleRoot);
+              isValid =
+                isValid === SealStatus.STATUS_CONFIRMED
+                  ? SealStatus.STATUS_CONFIRMED
+                  : isValid;
+            }
 
+            if (!tx) {
+              isValid = SealStatus.STATUS_PENDING;
+            }
             const merkleTools = new MerkleTools({
               hashType: 'SHA3-512',
             });
@@ -307,14 +350,14 @@ export class CertiMintValidation {
               );
             }
 
-            isValid = isValid && validProof && signInvite.exists;
+            if (!validProof || !signInvite.exists) {
+              return SealStatus.STATUS_FAILED;
+            }
           }
         }
       }
-
-      return isValid;
     }
-    return true;
+    return isValid;
   }
 
   private addHexPrefix(fromValue: string) {
