@@ -2,7 +2,7 @@ language: node_js
 
 cache:
   directories:
-    - "$HOME/.npm"
+    - '$HOME/.npm'
 
 notifications:
   slack:
@@ -10,7 +10,7 @@ notifications:
       - settlemint:5QuOPa3Z4kJbfbNIgei0asur#mint
 
 node_js:
-  - '9'
+  - '12'
 
 before_install:
   - echo "//registry.npmjs.org/:_authToken=\${NPM_TOKEN}" > .npmrc
