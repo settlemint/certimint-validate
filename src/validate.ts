@@ -448,6 +448,7 @@ export class CertiMintValidation {
         }
       }
     }
+
     return signInvites;
   }
 
