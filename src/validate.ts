@@ -46,12 +46,12 @@ export interface IAnchor {
 
 export interface IInviteAnchor extends IAnchor {
   invites?: { [inviteId: string]: ISignInvite };
+  transactionStatus: SealStatus;
 }
 
 export interface ISignInvite {
   proof: IProof[];
   hash: string;
-  transactionStatus: SealStatus;
 }
 
 export interface IAnchors<Type> {
@@ -97,6 +97,15 @@ export class CertiMintValidation {
     this.apiKey = apiKey;
   }
 
+  public async resolveSeal(seal: ISeal): Promise<ISeal> {
+    seal.signatures = await this.resolveSignatures(seal.signatures);
+    if (seal.signinvites) {
+      seal.signinvites = await this.resolveSignInvites(seal.signinvites);
+    }
+
+    return seal;
+  }
+
   public async validateSealAndData(
     seal: ISeal,
     data: string,
@@ -138,7 +147,7 @@ export class CertiMintValidation {
       return SealStatus.PENDING;
     }
 
-    return SealStatus.FAILED;
+    return SealStatus.CONFIRMED;
   }
 
   private async hashForData(
@@ -292,19 +301,31 @@ export class CertiMintValidation {
           const tx = await signatureProvider.getTransaction(
             this.addHexPrefix(signature.transactionId)
           );
-
           if (tx) {
             if (tx.data === this.addHexPrefix(signature.signature)) {
               isValid =
                 isValid === SealStatus.CONFIRMED
                   ? SealStatus.CONFIRMED
                   : isValid;
+            } else {
+              return SealStatus.FAILED;
             }
-
-            return SealStatus.FAILED;
+          }
+          if (
+            !tx &&
+            signature.transactionStatus &&
+            signature.transactionStatus === SealStatus.PENDING
+          ) {
+            isValid = SealStatus.PENDING;
           }
 
-          isValid = SealStatus.PENDING;
+          if (
+            !tx &&
+            (!signature.transactionStatus ||
+              signature.transactionStatus !== SealStatus.PENDING)
+          ) {
+            return SealStatus.FAILED;
+          }
         }
       }
     }
@@ -328,35 +349,47 @@ export class CertiMintValidation {
             const tx = await signInviteProvider.getTransaction(
               this.addHexPrefix(signInvite.transactionId)
             );
+
             if (tx) {
               signInvite.exists =
                 tx.data === this.addHexPrefix(signInvite.merkleRoot);
-
               isValid =
                 isValid === SealStatus.CONFIRMED
                   ? SealStatus.CONFIRMED
                   : isValid;
-            }
 
-            if (!tx) {
+              const merkleTools = new MerkleTools({
+                hashType: 'SHA3-512',
+              });
+              let validProof = true;
+
+              for (const inviteId of Object.keys(signInvite.invites)) {
+                const inviteAnchor = signInvite.invites[inviteId];
+
+                validProof = merkleTools.validateProof(
+                  inviteAnchor.proof,
+                  inviteAnchor.hash,
+                  signInvite.merkleRoot
+                );
+              }
+
+              if (!validProof || !signInvite.exists) {
+                return SealStatus.FAILED;
+              }
+            }
+            if (
+              !tx &&
+              signInvite.transactionStatus &&
+              signInvite.transactionStatus === SealStatus.PENDING
+            ) {
               isValid = SealStatus.PENDING;
             }
-            const merkleTools = new MerkleTools({
-              hashType: 'SHA3-512',
-            });
-            let validProof = true;
 
-            for (const inviteId of Object.keys(signInvite.invites)) {
-              const inviteAnchor = signInvite.invites[inviteId];
-
-              validProof = merkleTools.validateProof(
-                inviteAnchor.proof,
-                inviteAnchor.hash,
-                signInvite.merkleRoot
-              );
-            }
-
-            if (!validProof || !signInvite.exists) {
+            if (
+              !tx &&
+              (!signInvite.transactionStatus ||
+                signInvite.transactionStatus !== SealStatus.PENDING)
+            ) {
               return SealStatus.FAILED;
             }
           }
@@ -364,6 +397,58 @@ export class CertiMintValidation {
       }
     }
     return isValid;
+  }
+
+  private async resolveSignatures(
+    signatures: ISignatures
+  ): Promise<ISignatures> {
+    for (const protocol of Object.keys(signatures)) {
+      for (const address of Object.keys(signatures[protocol])) {
+        // This should technically not be neccessary since we only anchor signatures on Ethereum
+        if (protocol === Protocol.ETHEREUM) {
+          const signature = signatures[protocol][address];
+          const signatureProvider = new JsonRpcProvider(signature.nodeUrl);
+          const tx = await signatureProvider.getTransaction(
+            this.addHexPrefix(signature.transactionId)
+          );
+
+          if (tx) {
+            if (tx.data === this.addHexPrefix(signature.signature)) {
+              signatures[protocol][address].transactionStatus =
+                SealStatus.CONFIRMED;
+            }
+          }
+        }
+      }
+    }
+
+    return signatures;
+  }
+
+  private async resolveSignInvites(
+    signInvites: ISignInvites
+  ): Promise<ISignInvites> {
+    if (signInvites && signInvites.anchors) {
+      const signInviteAnchors = signInvites.anchors;
+      for (const protocol of Object.keys(signInviteAnchors)) {
+        for (const chainId of Object.keys(signInviteAnchors[protocol])) {
+          // This should technically not be neccessary since we only anchor signinvites on Ethereum
+          if (protocol === Protocol.ETHEREUM) {
+            const signInvite = signInviteAnchors[protocol][chainId];
+            const signInviteProvider = new JsonRpcProvider(signInvite.nodeUrl);
+            const tx = await signInviteProvider.getTransaction(
+              this.addHexPrefix(signInvite.transactionId)
+            );
+
+            if (tx && tx.data === this.addHexPrefix(signInvite.merkleRoot)) {
+              signInviteAnchors[protocol][chainId].transactionStatus =
+                SealStatus.CONFIRMED;
+            }
+          }
+        }
+      }
+    }
+    return signInvites;
   }
 
   private addHexPrefix(fromValue: string) {
