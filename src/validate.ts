@@ -97,7 +97,7 @@ export class CertiMintValidation {
     this.apiKey = apiKey;
   }
 
-  public async resolveSeal(seal: ISeal): Promise<ISeal> {
+  public async updateSeal(seal: ISeal): Promise<ISeal> {
     seal.signatures = await this.resolveSignatures(seal.signatures);
     if (seal.signinvites) {
       seal.signinvites = await this.resolveSignInvites(seal.signinvites);
