@@ -20,6 +20,12 @@ export enum DataType {
   HASH = 'HASH',
 }
 
+export enum SealStatus {
+  CONFIRMED = 'confirmed',
+  FAILED = 'failed',
+  PENDING = 'pending',
+}
+
 export interface ISeal {
   id: string;
   dataHash: string;
@@ -40,6 +46,7 @@ export interface IAnchor {
 
 export interface IInviteAnchor extends IAnchor {
   invites?: { [inviteId: string]: ISignInvite };
+  transactionStatus: SealStatus;
 }
 
 export interface ISignInvite {
@@ -70,8 +77,13 @@ export interface ISignatures {
       explorer: string;
       signature: string;
       signed: string;
+      transactionStatus: SealStatus;
     };
   };
+}
+
+export interface IOptions {
+  bitcoinUrl?: string;
 }
 
 export interface ISignInvites {
@@ -85,34 +97,57 @@ export class CertiMintValidation {
     this.apiKey = apiKey;
   }
 
+  public async updateSeal(seal: ISeal): Promise<ISeal> {
+    seal.signatures = await this.resolveSignatures(seal.signatures);
+    if (seal.signinvites) {
+      seal.signinvites = await this.resolveSignInvites(seal.signinvites);
+    }
+
+    return seal;
+  }
+
   public async validateSealAndData(
     seal: ISeal,
     data: string,
     dataType: DataType,
-    ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
-    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
-  ): Promise<boolean> {
+    options: IOptions = {}
+  ): Promise<SealStatus> {
     const hash = await this.hashForData(data, dataType);
-    return (
-      hash === seal.dataHash && this.validateSeal(seal, ethereumUrl, bitcoinUrl)
-    );
+
+    const validationStatus = await this.validateSeal(seal, options);
+
+    return hash === seal.dataHash ? validationStatus : SealStatus.FAILED;
   }
 
   public async validateSeal(
     seal: ISeal,
-    ethereumUrl?: string, // TODO: this should be removed since this is never used, but this will break legacy systems
-    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
-  ): Promise<boolean> {
+    options: IOptions = {}
+  ): Promise<SealStatus> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
       seal.dataHash,
-      bitcoinUrl
+      options.bitcoinUrl || 'https://api.blockcypher.com/v1/btc/main'
     );
 
     const validSignatures = await this.validateSignatures(seal.signatures);
     const validSignInvites = await this.validateSignInvites(seal.signinvites);
 
-    return validAnchors && validSignatures && validSignInvites;
+    if (
+      validSignatures === SealStatus.FAILED ||
+      validSignInvites === SealStatus.FAILED ||
+      !validAnchors
+    ) {
+      return SealStatus.FAILED;
+    }
+
+    if (
+      validSignatures === SealStatus.PENDING ||
+      validSignInvites === SealStatus.PENDING
+    ) {
+      return SealStatus.PENDING;
+    }
+
+    return SealStatus.CONFIRMED;
   }
 
   private async hashForData(
@@ -153,7 +188,7 @@ export class CertiMintValidation {
   private async validateAnchors(
     anchors: IAnchors<IAnchor>,
     dataHash: string,
-    bitcoinUrl: string
+    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
   ): Promise<boolean> {
     let isValid = true;
     for (const protocol of Object.keys(anchors)) {
@@ -253,8 +288,10 @@ export class CertiMintValidation {
     }
   }
 
-  private async validateSignatures(signatures: ISignatures): Promise<boolean> {
-    let isValid = true;
+  private async validateSignatures(
+    signatures: ISignatures
+  ): Promise<SealStatus> {
+    let isValid = SealStatus.CONFIRMED;
     for (const protocol of Object.keys(signatures)) {
       for (const address of Object.keys(signatures[protocol])) {
         // This should technically not be neccessary since we only anchor signatures on Ethereum
@@ -264,8 +301,31 @@ export class CertiMintValidation {
           const tx = await signatureProvider.getTransaction(
             this.addHexPrefix(signature.transactionId)
           );
-          isValid =
-            isValid && tx.data === this.addHexPrefix(signature.signature);
+          if (tx) {
+            if (tx.data === this.addHexPrefix(signature.signature)) {
+              isValid =
+                isValid === SealStatus.CONFIRMED
+                  ? SealStatus.CONFIRMED
+                  : isValid;
+            } else {
+              return SealStatus.FAILED;
+            }
+          }
+          if (
+            !tx &&
+            signature.transactionStatus &&
+            signature.transactionStatus === SealStatus.PENDING
+          ) {
+            isValid = SealStatus.PENDING;
+          }
+
+          if (
+            !tx &&
+            (!signature.transactionStatus ||
+              signature.transactionStatus !== SealStatus.PENDING)
+          ) {
+            return SealStatus.FAILED;
+          }
         }
       }
     }
@@ -275,10 +335,11 @@ export class CertiMintValidation {
 
   private async validateSignInvites(
     signInvites: ISignInvites
-  ): Promise<boolean> {
+  ): Promise<SealStatus> {
+    let isValid = SealStatus.CONFIRMED;
+
     if (signInvites && signInvites.anchors) {
       const signInviteAnchors = signInvites.anchors;
-      let isValid = true;
       for (const protocol of Object.keys(signInviteAnchors)) {
         for (const chainId of Object.keys(signInviteAnchors[protocol])) {
           // This should technically not be neccessary since we only anchor signinvites on Ethereum
@@ -289,32 +350,106 @@ export class CertiMintValidation {
               this.addHexPrefix(signInvite.transactionId)
             );
 
-            signInvite.exists =
-              tx.data === this.addHexPrefix(signInvite.merkleRoot);
+            if (tx) {
+              signInvite.exists =
+                tx.data === this.addHexPrefix(signInvite.merkleRoot);
+              isValid =
+                isValid === SealStatus.CONFIRMED
+                  ? SealStatus.CONFIRMED
+                  : isValid;
 
-            const merkleTools = new MerkleTools({
-              hashType: 'SHA3-512',
-            });
-            let validProof = true;
+              const merkleTools = new MerkleTools({
+                hashType: 'SHA3-512',
+              });
+              let validProof = true;
 
-            for (const inviteId of Object.keys(signInvite.invites)) {
-              const inviteAnchor = signInvite.invites[inviteId];
+              for (const inviteId of Object.keys(signInvite.invites)) {
+                const inviteAnchor = signInvite.invites[inviteId];
 
-              validProof = merkleTools.validateProof(
-                inviteAnchor.proof,
-                inviteAnchor.hash,
-                signInvite.merkleRoot
-              );
+                validProof = merkleTools.validateProof(
+                  inviteAnchor.proof,
+                  inviteAnchor.hash,
+                  signInvite.merkleRoot
+                );
+              }
+
+              if (!validProof || !signInvite.exists) {
+                return SealStatus.FAILED;
+              }
+            }
+            if (
+              !tx &&
+              signInvite.transactionStatus &&
+              signInvite.transactionStatus === SealStatus.PENDING
+            ) {
+              isValid = SealStatus.PENDING;
             }
 
-            isValid = isValid && validProof && signInvite.exists;
+            if (
+              !tx &&
+              (!signInvite.transactionStatus ||
+                signInvite.transactionStatus !== SealStatus.PENDING)
+            ) {
+              return SealStatus.FAILED;
+            }
           }
         }
       }
-
-      return isValid;
     }
-    return true;
+    return isValid;
+  }
+
+  private async resolveSignatures(
+    signatures: ISignatures
+  ): Promise<ISignatures> {
+    for (const protocol of Object.keys(signatures)) {
+      for (const address of Object.keys(signatures[protocol])) {
+        // This should technically not be neccessary since we only anchor signatures on Ethereum
+        if (protocol === Protocol.ETHEREUM) {
+          const signature = signatures[protocol][address];
+          const signatureProvider = new JsonRpcProvider(signature.nodeUrl);
+          const tx = await signatureProvider.getTransaction(
+            this.addHexPrefix(signature.transactionId)
+          );
+
+          if (tx) {
+            if (tx.data === this.addHexPrefix(signature.signature)) {
+              signatures[protocol][address].transactionStatus =
+                SealStatus.CONFIRMED;
+            }
+          }
+        }
+      }
+    }
+
+    return signatures;
+  }
+
+  private async resolveSignInvites(
+    signInvites: ISignInvites
+  ): Promise<ISignInvites> {
+    if (signInvites && signInvites.anchors) {
+      const signInviteAnchors = signInvites.anchors;
+      for (const protocol of Object.keys(signInviteAnchors)) {
+        for (const chainId of Object.keys(signInviteAnchors[protocol])) {
+          // This should technically not be neccessary since we only anchor signinvites on Ethereum
+          if (protocol === Protocol.ETHEREUM) {
+            const signInvite = signInviteAnchors[protocol][chainId];
+            const signInviteProvider = new JsonRpcProvider(signInvite.nodeUrl);
+            const tx = await signInviteProvider.getTransaction(
+              this.addHexPrefix(signInvite.transactionId)
+            );
+
+            if (tx && tx.data === this.addHexPrefix(signInvite.merkleRoot)) {
+              signInviteAnchors[protocol][chainId].transactionStatus =
+                SealStatus.CONFIRMED;
+            }
+          }
+        }
+      }
+    }
+
+    return signInvites;
   }
 
   private addHexPrefix(fromValue: string) {
