@@ -16,9 +16,13 @@ import { CertiMintValidation } from '@settlemint/certimint-validate';
 const bitcoinApiKey = 'e341cb773bff270e539690b93fb69f32'; // Optional, your api key from blockcypher if you use bitcoin anchors
 
 const certiMintValidation = new CertiMintValidation(bitcoinApiKey);
-isValid = await certiMintValidation.validateSeal(
-  mySealObject,
-  'https://mainnet.infura.io', // Api url for ethereum
-  'https://api.blockcypher.com/v1/btc/main' // Api url for bitcoin
-);
+
+const options = {
+  bitcoinUrl: 'https://api.blockcypher.com/v1/btc/main', // Optional; Api url for bitcoin
+};
+status = await certiMintValidation.validateSeal(mySealObject, options);
+
+status === SealStatus.CONFIRMED; // Seal has successfully been anchored
+status === SealStatus.FAILED; // Failed to anchor seal, signinvites and/or signatures
+status === SealStatus.PENDING; // Waiting for seal, signinvites and/or signatures to be anchored
 ```
