@@ -21,9 +21,9 @@ export enum DataType {
 }
 
 export enum SealStatus {
-  STATUS_CONFIRMED = 'confirmed',
-  STATUS_FAILED = 'failed',
-  STATUS_PENDING = 'pending',
+  CONFIRMED = 'confirmed',
+  FAILED = 'failed',
+  PENDING = 'pending',
 }
 
 export interface ISeal {
@@ -107,7 +107,7 @@ export class CertiMintValidation {
 
     const validationStatus = await this.validateSeal(seal, options);
 
-    return hash === seal.dataHash ? validationStatus : SealStatus.STATUS_FAILED;
+    return hash === seal.dataHash ? validationStatus : SealStatus.FAILED;
   }
 
   public async validateSeal(
@@ -124,21 +124,21 @@ export class CertiMintValidation {
     const validSignInvites = await this.validateSignInvites(seal.signinvites);
 
     if (
-      validSignatures === SealStatus.STATUS_FAILED ||
-      validSignInvites === SealStatus.STATUS_FAILED ||
+      validSignatures === SealStatus.FAILED ||
+      validSignInvites === SealStatus.FAILED ||
       !validAnchors
     ) {
-      return SealStatus.STATUS_FAILED;
+      return SealStatus.FAILED;
     }
 
     if (
-      validSignatures === SealStatus.STATUS_PENDING ||
-      validSignInvites === SealStatus.STATUS_PENDING
+      validSignatures === SealStatus.PENDING ||
+      validSignInvites === SealStatus.PENDING
     ) {
-      return SealStatus.STATUS_PENDING;
+      return SealStatus.PENDING;
     }
 
-    return SealStatus.STATUS_FAILED;
+    return SealStatus.FAILED;
   }
 
   private async hashForData(
@@ -282,7 +282,7 @@ export class CertiMintValidation {
   private async validateSignatures(
     signatures: ISignatures
   ): Promise<SealStatus> {
-    let isValid = SealStatus.STATUS_CONFIRMED;
+    let isValid = SealStatus.CONFIRMED;
     for (const protocol of Object.keys(signatures)) {
       for (const address of Object.keys(signatures[protocol])) {
         // This should technically not be neccessary since we only anchor signatures on Ethereum
@@ -296,15 +296,15 @@ export class CertiMintValidation {
           if (tx) {
             if (tx.data === this.addHexPrefix(signature.signature)) {
               isValid =
-                isValid === SealStatus.STATUS_CONFIRMED
-                  ? SealStatus.STATUS_CONFIRMED
+                isValid === SealStatus.CONFIRMED
+                  ? SealStatus.CONFIRMED
                   : isValid;
             }
 
-            return SealStatus.STATUS_FAILED;
+            return SealStatus.FAILED;
           }
 
-          isValid = SealStatus.STATUS_PENDING;
+          isValid = SealStatus.PENDING;
         }
       }
     }
@@ -315,7 +315,7 @@ export class CertiMintValidation {
   private async validateSignInvites(
     signInvites: ISignInvites
   ): Promise<SealStatus> {
-    let isValid = SealStatus.STATUS_CONFIRMED;
+    let isValid = SealStatus.CONFIRMED;
 
     if (signInvites && signInvites.anchors) {
       const signInviteAnchors = signInvites.anchors;
@@ -333,13 +333,13 @@ export class CertiMintValidation {
                 tx.data === this.addHexPrefix(signInvite.merkleRoot);
 
               isValid =
-                isValid === SealStatus.STATUS_CONFIRMED
-                  ? SealStatus.STATUS_CONFIRMED
+                isValid === SealStatus.CONFIRMED
+                  ? SealStatus.CONFIRMED
                   : isValid;
             }
 
             if (!tx) {
-              isValid = SealStatus.STATUS_PENDING;
+              isValid = SealStatus.PENDING;
             }
             const merkleTools = new MerkleTools({
               hashType: 'SHA3-512',
@@ -357,7 +357,7 @@ export class CertiMintValidation {
             }
 
             if (!validProof || !signInvite.exists) {
-              return SealStatus.STATUS_FAILED;
+              return SealStatus.FAILED;
             }
           }
         }
