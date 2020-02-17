@@ -82,20 +82,22 @@ export interface ISignatures {
   };
 }
 
-export interface IOptions {
-  bitcoinUrl?: string;
+export interface IConfig {
+  bitcoin?: {
+    url?: string;
+    apiKey?: string;
+  };
+
+  ethereum?: {
+    apiKey?: string;
+  };
 }
 
 export interface ISignInvites {
   anchors: IAnchors<IInviteAnchor>;
 }
-
 export class CertiMintValidation {
-  public apiKey: string;
-
-  constructor(apiKey: string = null) {
-    this.apiKey = apiKey;
-  }
+  public constructor(protected config: IConfig = {}) {}
 
   public async updateSeal(seal: ISeal): Promise<ISeal> {
     seal.signatures = await this.resolveSignatures(seal.signatures);
@@ -109,28 +111,27 @@ export class CertiMintValidation {
   public async validateSealAndData(
     seal: ISeal,
     data: string,
-    dataType: DataType,
-    options: IOptions = {}
+    dataType: DataType
   ): Promise<SealStatus> {
     const hash = await this.hashForData(data, dataType);
 
-    const validationStatus = await this.validateSeal(seal, options);
+    const validationStatus = await this.validateSeal(seal);
 
     return hash === seal.dataHash ? validationStatus : SealStatus.FAILED;
   }
 
-  public async validateSeal(
-    seal: ISeal,
-    options: IOptions = {}
-  ): Promise<SealStatus> {
+  public async validateSeal(seal: ISeal): Promise<SealStatus> {
     const validAnchors = await this.validateAnchors(
       seal.anchors,
-      seal.dataHash,
-      options.bitcoinUrl || 'https://api.blockcypher.com/v1/btc/main'
+      seal.dataHash
     );
 
-    const validSignatures = await this.validateSignatures(seal.signatures);
-    const validSignInvites = await this.validateSignInvites(seal.signinvites);
+    const validSignatures = seal.signatures
+      ? await this.validateSignatures(seal.signatures)
+      : SealStatus.CONFIRMED;
+    const validSignInvites = seal.signinvites
+      ? await this.validateSignInvites(seal.signinvites)
+      : SealStatus.CONFIRMED;
 
     if (
       validSignatures === SealStatus.FAILED ||
@@ -161,6 +162,10 @@ export class CertiMintValidation {
           hex = await this.streamToHashForNode(data);
         } else if (data instanceof Blob) {
           hex = await this.streamToHashForBrowser(data);
+        } else {
+          throw new Error(
+            `ERROR: File is not Readable or Blob for ${dataType}`
+          );
         }
         break;
       case DataType.STRING:
@@ -182,32 +187,27 @@ export class CertiMintValidation {
       default:
         throw new Error(`ERROR: unknown type ${dataType}`);
     }
+
     return hex;
   }
 
   private async validateAnchors(
     anchors: IAnchors<IAnchor>,
-    dataHash: string,
-    bitcoinUrl: string = 'https://api.blockcypher.com/v1/btc/main'
+    dataHash: string
   ): Promise<boolean> {
     let isValid = true;
     for (const protocol of Object.keys(anchors)) {
       switch (protocol) {
         case Protocol.ETHEREUM:
           isValid =
-            isValid &&
-            (await this.validateEthereumAnchor(anchors, dataHash, isValid));
+            isValid && (await this.validateEthereumAnchor(anchors, dataHash));
           break;
         case Protocol.BITCOIN:
           isValid =
-            isValid &&
-            (await this.validateBitcoinAnchor(
-              anchors,
-              dataHash,
-              bitcoinUrl,
-              isValid
-            ));
-          break;
+            isValid && (await this.validateBitcoinAnchor(anchors, dataHash));
+
+        default:
+          throw new Error(`Unsupported protocol ${protocol}`);
       }
     }
 
@@ -216,54 +216,22 @@ export class CertiMintValidation {
 
   private async validateEthereumAnchor(
     anchors: IAnchors<IAnchor>,
-    dataHash: string,
-    isValid: boolean
+    dataHash: string
   ) {
-    for (const chainId of Object.keys(anchors[Protocol.ETHEREUM])) {
-      const anchor = anchors[Protocol.ETHEREUM][chainId];
-      const provider = new JsonRpcProvider(anchor.nodeUrl);
+    let isValid = true;
 
-      const tx = await provider.getTransaction(
-        this.addHexPrefix(anchor.transactionId)
-      );
+    for (const chainId of Object.keys(anchors[Protocol.ETHEREUM] || [])) {
+      const anchor = anchors[Protocol.ETHEREUM]?.[chainId];
+      if (anchor) {
+        const provider = new JsonRpcProvider(
+          this.addInfuraApiKey(anchor.nodeUrl)
+        );
 
-      anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
+        const tx = await provider.getTransaction(
+          this.addHexPrefix(anchor.transactionId)
+        );
 
-      const merkleTools = new MerkleTools({
-        hashType: 'SHA3-512',
-      });
-
-      const validProof = merkleTools.validateProof(
-        anchor.proof,
-        dataHash,
-        anchor.merkleRoot
-      );
-
-      return isValid && anchor.exists && validProof;
-    }
-  }
-
-  private async validateBitcoinAnchor(
-    anchors: IAnchors<IAnchor>,
-    dataHash: string,
-    baseUrl: string,
-    isValid: boolean
-  ) {
-    for (const networkName of Object.keys(anchors[Protocol.BITCOIN])) {
-      const anchor = anchors[Protocol.BITCOIN][networkName];
-      try {
-        const txId = anchor.transactionId;
-        const tx = await Axios.get(this.buildTxUrl(baseUrl, txId));
-
-        const txOutputs = tx.data.outputs;
-        let merkleRoot: string;
-        for (const output of txOutputs) {
-          if (output.data_hex !== undefined && output.data_hex != null) {
-            merkleRoot = output.data_hex;
-          }
-        }
-
-        anchor.exists = merkleRoot === anchor.merkleRoot;
+        anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
 
         const merkleTools = new MerkleTools({
           hashType: 'SHA3-512',
@@ -275,17 +243,70 @@ export class CertiMintValidation {
           anchor.merkleRoot
         );
 
-        return isValid && anchor.exists && validProof;
-      } catch (error) {
-        if (error.response !== undefined && error.response.status === 429) {
-          throw new Error(
-            'Too many request to the blockcypher api, please add an apikey or upgrade your blockcypher plan'
+        isValid = isValid && anchor.exists && validProof;
+      }
+    }
+
+    return isValid;
+  }
+
+  private async validateBitcoinAnchor(
+    anchors: IAnchors<IAnchor>,
+    dataHash: string
+  ) {
+    let isValid = true;
+    for (const networkName of Object.keys(anchors[Protocol.BITCOIN] || [])) {
+      const anchor = anchors[Protocol.BITCOIN]?.[networkName];
+      if (anchor) {
+        try {
+          const txId = anchor.transactionId;
+          const tx = await Axios.get(
+            this.buildTxUrl(
+              this.config?.bitcoin?.url ||
+                'https://api.blockcypher.com/v1/btc/main',
+              txId
+            )
           );
-        } else {
-          throw error;
+
+          const txOutputs = tx.data.outputs;
+          let merkleRoot: string | null = null;
+          for (const output of txOutputs) {
+            if (output.data_hex !== undefined && output.data_hex !== null) {
+              merkleRoot = output.data_hex;
+            }
+          }
+
+          if (!merkleRoot) {
+            throw new Error('Merkle root is undefined');
+          }
+
+          anchor.exists = merkleRoot === anchor.merkleRoot;
+
+          const merkleTools = new MerkleTools({
+            hashType: 'SHA3-512',
+          });
+
+          const validProof = merkleTools.validateProof(
+            anchor.proof,
+            dataHash,
+            anchor.merkleRoot
+          );
+
+          isValid = isValid && anchor.exists && validProof;
+        } catch (error) {
+          if (error.response !== undefined && error.response.status === 429) {
+            throw new Error(
+              'Too many request to the blockcypher api, please add an apikey or upgrade your blockcypher plan'
+            );
+            // tslint:disable-next-line: unnecessary-else
+          } else {
+            throw error;
+          }
         }
       }
     }
+
+    return isValid;
   }
 
   private async validateSignatures(
@@ -296,35 +317,39 @@ export class CertiMintValidation {
       for (const address of Object.keys(signatures[protocol])) {
         // This should technically not be neccessary since we only anchor signatures on Ethereum
         if (protocol === Protocol.ETHEREUM) {
-          const signature = signatures[protocol][address];
-          const signatureProvider = new JsonRpcProvider(signature.nodeUrl);
-          const tx = await signatureProvider.getTransaction(
-            this.addHexPrefix(signature.transactionId)
-          );
-          if (tx) {
-            if (tx.data === this.addHexPrefix(signature.signature)) {
-              isValid =
-                isValid === SealStatus.CONFIRMED
-                  ? SealStatus.CONFIRMED
-                  : isValid;
-            } else {
+          const signature = signatures[protocol]?.[address];
+          if (signature) {
+            const signatureProvider = new JsonRpcProvider(
+              this.addInfuraApiKey(signature.nodeUrl)
+            );
+            const tx = await signatureProvider.getTransaction(
+              this.addHexPrefix(signature.transactionId)
+            );
+            if (tx) {
+              if (tx.data === this.addHexPrefix(signature.signature)) {
+                isValid =
+                  isValid === SealStatus.CONFIRMED
+                    ? SealStatus.CONFIRMED
+                    : isValid;
+              } else {
+                return SealStatus.FAILED;
+              }
+            }
+            if (
+              !tx &&
+              signature.transactionStatus &&
+              signature.transactionStatus === SealStatus.PENDING
+            ) {
+              isValid = SealStatus.PENDING;
+            }
+
+            if (
+              !tx &&
+              (!signature.transactionStatus ||
+                signature.transactionStatus !== SealStatus.PENDING)
+            ) {
               return SealStatus.FAILED;
             }
-          }
-          if (
-            !tx &&
-            signature.transactionStatus &&
-            signature.transactionStatus === SealStatus.PENDING
-          ) {
-            isValid = SealStatus.PENDING;
-          }
-
-          if (
-            !tx &&
-            (!signature.transactionStatus ||
-              signature.transactionStatus !== SealStatus.PENDING)
-          ) {
-            return SealStatus.FAILED;
           }
         }
       }
@@ -344,78 +369,92 @@ export class CertiMintValidation {
         for (const chainId of Object.keys(signInviteAnchors[protocol])) {
           // This should technically not be neccessary since we only anchor signinvites on Ethereum
           if (protocol === Protocol.ETHEREUM) {
-            const signInvite = signInviteAnchors[protocol][chainId];
-            const signInviteProvider = new JsonRpcProvider(signInvite.nodeUrl);
-            const tx = await signInviteProvider.getTransaction(
-              this.addHexPrefix(signInvite.transactionId)
-            );
+            const signInvite = signInviteAnchors[protocol]?.[chainId];
+            if (signInvite) {
+              const signInviteProvider = new JsonRpcProvider(
+                this.addInfuraApiKey(signInvite.nodeUrl)
+              );
+              const tx = await signInviteProvider.getTransaction(
+                this.addHexPrefix(signInvite.transactionId)
+              );
 
-            if (tx) {
-              signInvite.exists =
-                tx.data === this.addHexPrefix(signInvite.merkleRoot);
-              isValid =
-                isValid === SealStatus.CONFIRMED
-                  ? SealStatus.CONFIRMED
-                  : isValid;
+              if (tx) {
+                signInvite.exists =
+                  tx.data === this.addHexPrefix(signInvite.merkleRoot);
+                isValid =
+                  isValid === SealStatus.CONFIRMED
+                    ? SealStatus.CONFIRMED
+                    : isValid;
 
-              const merkleTools = new MerkleTools({
-                hashType: 'SHA3-512',
-              });
-              let validProof = true;
+                const merkleTools = new MerkleTools({
+                  hashType: 'SHA3-512',
+                });
+                let validProof = true;
 
-              for (const inviteId of Object.keys(signInvite.invites)) {
-                const inviteAnchor = signInvite.invites[inviteId];
+                for (const inviteId of Object.keys(signInvite.invites || {})) {
+                  const inviteAnchor = signInvite.invites?.[inviteId];
 
-                validProof = merkleTools.validateProof(
-                  inviteAnchor.proof,
-                  inviteAnchor.hash,
-                  signInvite.merkleRoot
-                );
+                  if (inviteAnchor) {
+                    validProof = merkleTools.validateProof(
+                      inviteAnchor.proof,
+                      inviteAnchor.hash,
+                      signInvite.merkleRoot
+                    );
+                  }
+                }
+
+                if (!validProof || !signInvite.exists) {
+                  return SealStatus.FAILED;
+                }
+              }
+              if (
+                !tx &&
+                signInvite.transactionStatus &&
+                signInvite.transactionStatus === SealStatus.PENDING
+              ) {
+                isValid = SealStatus.PENDING;
               }
 
-              if (!validProof || !signInvite.exists) {
+              if (
+                !tx &&
+                (!signInvite.transactionStatus ||
+                  signInvite.transactionStatus !== SealStatus.PENDING)
+              ) {
                 return SealStatus.FAILED;
               }
-            }
-            if (
-              !tx &&
-              signInvite.transactionStatus &&
-              signInvite.transactionStatus === SealStatus.PENDING
-            ) {
-              isValid = SealStatus.PENDING;
-            }
-
-            if (
-              !tx &&
-              (!signInvite.transactionStatus ||
-                signInvite.transactionStatus !== SealStatus.PENDING)
-            ) {
-              return SealStatus.FAILED;
             }
           }
         }
       }
     }
+
     return isValid;
   }
 
   private async resolveSignatures(
-    signatures: ISignatures
-  ): Promise<ISignatures> {
-    for (const protocol of Object.keys(signatures)) {
-      for (const address of Object.keys(signatures[protocol])) {
-        // This should technically not be neccessary since we only anchor signatures on Ethereum
-        if (protocol === Protocol.ETHEREUM) {
-          const signature = signatures[protocol][address];
-          const signatureProvider = new JsonRpcProvider(signature.nodeUrl);
-          const tx = await signatureProvider.getTransaction(
-            this.addHexPrefix(signature.transactionId)
-          );
-
-          if (tx) {
-            if (tx.data === this.addHexPrefix(signature.signature)) {
-              signatures[protocol][address].transactionStatus =
-                SealStatus.CONFIRMED;
+    signatures?: ISignatures
+  ): Promise<ISignatures | undefined> {
+    if (signatures) {
+      for (const protocol of Object.keys(signatures || [])) {
+        for (const address of Object.keys(signatures?.[protocol] || [])) {
+          // This should technically not be neccessary since we only anchor signatures on Ethereum
+          if (protocol === Protocol.ETHEREUM) {
+            const signature = signatures?.[protocol]?.[address];
+            if (signature) {
+              const signatureProvider = new JsonRpcProvider(
+                this.addInfuraApiKey(signature.nodeUrl)
+              );
+              const tx = await signatureProvider.getTransaction(
+                this.addHexPrefix(signature.transactionId)
+              );
+              if (tx) {
+                if (tx.data === this.addHexPrefix(signature.signature)) {
+                  // tslint:disable-next-line: ban-ts-ignore
+                  // @ts-ignore
+                  signatures[protocol][address].transactionStatus =
+                    SealStatus.CONFIRMED;
+                }
+              }
             }
           }
         }
@@ -434,15 +473,25 @@ export class CertiMintValidation {
         for (const chainId of Object.keys(signInviteAnchors[protocol])) {
           // This should technically not be neccessary since we only anchor signinvites on Ethereum
           if (protocol === Protocol.ETHEREUM) {
-            const signInvite = signInviteAnchors[protocol][chainId];
-            const signInviteProvider = new JsonRpcProvider(signInvite.nodeUrl);
-            const tx = await signInviteProvider.getTransaction(
-              this.addHexPrefix(signInvite.transactionId)
-            );
+            const signInvite = signInviteAnchors[protocol]?.[chainId];
+            if (signInvite) {
+              const signInviteProvider = new JsonRpcProvider(
+                this.addInfuraApiKey(signInvite.nodeUrl)
+              );
+              const tx = await signInviteProvider.getTransaction(
+                this.addHexPrefix(signInvite.transactionId)
+              );
 
-            if (tx && tx.data === this.addHexPrefix(signInvite.merkleRoot)) {
-              signInviteAnchors[protocol][chainId].transactionStatus =
-                SealStatus.CONFIRMED;
+              if (
+                tx &&
+                tx.data === this.addHexPrefix(signInvite.merkleRoot) &&
+                signInviteAnchors[protocol]
+              ) {
+                // tslint:disable-next-line: ban-ts-ignore
+                // @ts-ignore
+                signInviteAnchors[protocol][chainId].transactionStatus =
+                  SealStatus.CONFIRMED;
+              }
             }
           }
         }
@@ -457,12 +506,10 @@ export class CertiMintValidation {
   }
 
   private isHexPrefixed(valueToCheck: string) {
-    return (
-      typeof valueToCheck === 'string' && valueToCheck.substring(0, 2) === '0x'
-    );
+    return valueToCheck.substring(0, 2) === '0x';
   }
 
-  private streamToHashForNode(stream: Readable): Promise<string> {
+  private async streamToHashForNode(stream: Readable): Promise<string> {
     return new Promise((resolve, reject) => {
       const allData: Buffer[] = [];
       stream.on('data', chunk => {
@@ -477,7 +524,7 @@ export class CertiMintValidation {
     });
   }
 
-  private streamToHashForBrowser(file: Blob): Promise<string> {
+  private async streamToHashForBrowser(file: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -491,7 +538,19 @@ export class CertiMintValidation {
   }
 
   private buildTxUrl(baseUrl: string, txId: string) {
-    const apiKey = this.apiKey !== null ? `?token=${this.apiKey}` : '';
-    return `${baseUrl}/txs/${txId}${apiKey}`;
+    const apiKeyParam = this.config?.bitcoin?.apiKey
+      ? `?token=${this.config.bitcoin.apiKey}`
+      : '';
+
+    return `${baseUrl}/txs/${txId}${apiKeyParam}`;
+  }
+
+  private addInfuraApiKey(baseUrl: string) {
+    return baseUrl.match(/infura.io/) && this.config?.ethereum?.apiKey
+      ? baseUrl.replace(
+          /infura.io/,
+          `infura.io/v3/${this.config.ethereum.apiKey}`
+        )
+      : baseUrl;
   }
 }

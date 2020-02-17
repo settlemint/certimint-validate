@@ -1,7 +1,46 @@
 {
-  "extends": ["tslint:latest", "tslint-config-prettier"],
+  "extends": [
+    "tslint:all",
+    "tslint-consistent-codestyle",
+    "tslint-config-prettier"
+  ],
   "rules": {
     "no-submodule-imports": false,
-    "no-console": false
+    "no-console": false,
+    "object-literal-sort-keys": false,
+    "prefer-for-of": false,
+    "no-empty-interface": false,
+    "no-floating-promises": true,
+    "no-unused-expression": true,
+    "completed-docs": false,
+    "no-use-before-declare": false,
+    "typedef": false,
+    "no-inferred-empty-object-type": false,
+    "no-parameter-properties": false,
+    "member-ordering": false,
+    "only-arrow-functions": false,
+    "strict-boolean-expressions": false,
+    "no-magic-numbers": false,
+    "match-default-export-name": false,
+    "prefer-function-over-method": false,
+    "no-null-undefined-union": false,
+    "cyclomatic-complexity": false,
+    "await-promise": [true, "Bluebird"],
+    "no-unsafe-any": false,
+    "comment-format": false,
+    "file-name-casing": [false, "kebab-case"],
+    "increment-decrement": false,
+    "no-non-null-assertion": false,
+    "react-hooks-nesting": "error",
+    "no-import-side-effect": false,
+    "no-default-import": false,
+    "variable-name": [false, "lowerCamelCase"],
+    "jsx-no-lambda": false,
+    "no-default-export": false,
+    "no-namespace": false,
+    "no-null-keyword": false,
+    "no-void-expression": [true, "ignore-arrow-function-shorthand"],
+    "no-use-before-define": false,
+    "prefer-template": false
   }
 }

@@ -1,8 +1,7 @@
 language: node_js
 
 cache:
-  directories:
-    - '$HOME/.npm'
+  yarn: true
 
 notifications:
   slack:
@@ -10,15 +9,14 @@ notifications:
       - settlemint:5QuOPa3Z4kJbfbNIgei0asur#mint
 
 node_js:
-  - '12'
+  - "12"
 
 before_install:
   - echo "//registry.npmjs.org/:_authToken=\${NPM_TOKEN}" > .npmrc
-  - npm i -g npm
 
 install:
-  - npm ci
+  - yarn
 
 after_success:
-  - npm run build
-  - npm run semantic-release
+  - yarn build
+  - yarn run semantic-release
