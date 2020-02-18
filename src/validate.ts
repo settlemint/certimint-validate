@@ -205,6 +205,7 @@ export class CertiMintValidation {
         case Protocol.BITCOIN:
           isValid =
             isValid && (await this.validateBitcoinAnchor(anchors, dataHash));
+          break;
 
         default:
           throw new Error(`Unsupported protocol ${protocol}`);
