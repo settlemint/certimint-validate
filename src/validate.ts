@@ -1,6 +1,6 @@
+import { JsonRpcProvider } from '@ethersproject/providers';
 import MerkleTools from '@settlemint/merkle-tools';
 import Axios from 'axios';
-import { JsonRpcProvider } from 'ethers/providers/json-rpc-provider';
 import { sha3_512 } from 'js-sha3';
 import { Readable } from 'stream';
 
@@ -513,13 +513,13 @@ export class CertiMintValidation {
   private async streamToHashForNode(stream: Readable): Promise<string> {
     return new Promise((resolve, reject) => {
       const allData: Buffer[] = [];
-      stream.on('data', chunk => {
+      stream.on('data', (chunk) => {
         allData.push(chunk);
       });
       stream.on('end', () => {
         resolve(sha3_512(Buffer.concat(allData)));
       });
-      stream.on('error', error => {
+      stream.on('error', (error) => {
         reject(error);
       });
     });
