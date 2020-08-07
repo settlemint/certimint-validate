@@ -3,6 +3,7 @@ import MerkleTools from '@settlemint/merkle-tools';
 import Axios from 'axios';
 import { sha3_512 } from 'js-sha3';
 import { Readable } from 'stream';
+import { inspect } from 'util';
 
 export enum Protocol {
   BITCOIN = 'bitcoin',
@@ -228,8 +229,33 @@ export class CertiMintValidation {
           this.addInfuraApiKey(anchor.nodeUrl)
         );
 
+        provider.on('debug', (info) => {
+          if (info.action === 'response') {
+            console.log(
+              `Request:  ${inspect(info.request, {
+                showHidden: false,
+                depth: 2,
+                colors: true,
+                breakLength: Number.POSITIVE_INFINITY,
+              })} - Response: ${inspect(info.response, {
+                showHidden: false,
+                depth: 2,
+                colors: true,
+                breakLength: Number.POSITIVE_INFINITY,
+              })}`
+            );
+          }
+        });
+
         const tx = await provider.getTransaction(
           this.addHexPrefix(anchor.transactionId)
+        );
+
+        console.log(
+          111,
+          tx,
+          this.addInfuraApiKey(anchor.nodeUrl),
+          this.addInfuraApiKey(anchor.nodeUrl)
         );
 
         anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
