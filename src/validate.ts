@@ -233,12 +233,9 @@ export class CertiMintValidation {
           this.addHexPrefix(anchor.transactionId)
         );
 
-        console.log(
-          111,
-          tx,
-          this.addInfuraApiKey(anchor.nodeUrl),
-          this.addHexPrefix(anchor.transactionId)
-        );
+        if(!tx){
+          return false;
+        }
 
         anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
 
