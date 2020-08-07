@@ -229,24 +229,6 @@ export class CertiMintValidation {
           this.addInfuraApiKey(anchor.nodeUrl)
         );
 
-        provider.on('debug', (info) => {
-          if (info.action === 'response') {
-            console.log(
-              `Request:  ${inspect(info.request, {
-                showHidden: false,
-                depth: 2,
-                colors: true,
-                breakLength: Number.POSITIVE_INFINITY,
-              })} - Response: ${inspect(info.response, {
-                showHidden: false,
-                depth: 2,
-                colors: true,
-                breakLength: Number.POSITIVE_INFINITY,
-              })}`
-            );
-          }
-        });
-
         const tx = await provider.getTransaction(
           this.addHexPrefix(anchor.transactionId)
         );
@@ -255,7 +237,7 @@ export class CertiMintValidation {
           111,
           tx,
           this.addInfuraApiKey(anchor.nodeUrl),
-          this.addInfuraApiKey(anchor.nodeUrl)
+          this.addHexPrefix(anchor.transactionId)
         );
 
         anchor.exists = tx.data === this.addHexPrefix(anchor.merkleRoot);
