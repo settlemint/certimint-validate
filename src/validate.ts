@@ -234,6 +234,8 @@ export class CertiMintValidation {
         );
 
         if(!tx){
+          console.log(`Not found:`, anchor)
+
           return false;
         }
 
