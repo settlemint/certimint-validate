@@ -33,7 +33,7 @@
   "dependencies": {
     "@ethersproject/providers": "^5.0.5",
     "@settlemint/merkle-tools": "^1.0.7",
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "babel-cli": "^6.26.0",
     "js-sha3": "^0.8.0",
     "tsc-watch": "^4.2.9"
