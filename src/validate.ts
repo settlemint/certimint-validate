@@ -225,6 +225,13 @@ export class CertiMintValidation {
     for (const chainId of Object.keys(anchors[Protocol.ETHEREUM] || [])) {
       const anchor = anchors[Protocol.ETHEREUM]?.[chainId];
       if (anchor) {
+
+        if(anchor.nodeUrl.match(/mintnet/)){
+          // the mintnet network is discontinued.
+          // since all anchors are also on the mainnet and bitcoin, no security is lost.
+          return true;
+        }
+
         const provider = new JsonRpcProvider(
           this.addInfuraApiKey(anchor.nodeUrl)
         );
