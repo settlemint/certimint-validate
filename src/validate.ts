@@ -233,7 +233,7 @@ export class CertiMintValidation {
         }
 
         const provider = new JsonRpcProvider(
-          this.addInfuraApiKey(anchor.nodeUrl)
+          this.addInfuraApiKey(anchor.nodeUrl), 'mainnet'
         );
 
         const tx = await provider.getTransaction(
