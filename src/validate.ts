@@ -231,7 +231,7 @@ export class CertiMintValidation {
           return true;
         }
 
-        const provider = new InfuraProvider('homestead', this.config.ethereum.apiKey);
+        const provider = InfuraProvider.getWebSocketProvider('homestead', this.config.ethereum.apiKey);
 
         console.log(`Trying to validate ${this.addHexPrefix(anchor.transactionId)} on Infura`);
         const tx = await provider.getTransaction(
