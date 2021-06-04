@@ -1,9 +1,8 @@
-import { JsonRpcProvider } from '@ethersproject/providers';
+import { InfuraProvider, JsonRpcProvider } from '@ethersproject/providers';
 import MerkleTools from '@settlemint/merkle-tools';
 import Axios from 'axios';
 import { sha3_512 } from 'js-sha3';
 import { Readable } from 'stream';
-import { inspect } from 'util';
 
 export enum Protocol {
   BITCOIN = 'bitcoin',
@@ -232,9 +231,7 @@ export class CertiMintValidation {
           return true;
         }
 
-        const provider = new JsonRpcProvider(
-          this.addInfuraApiKey(anchor.nodeUrl), 'mainnet'
-        );
+        const provider = new InfuraProvider('mainnet', this.config.ethereum.apiKey);
 
         const tx = await provider.getTransaction(
           this.addHexPrefix(anchor.transactionId)
