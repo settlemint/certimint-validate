@@ -1,4 +1,4 @@
-import { InfuraProvider, JsonRpcProvider } from '@ethersproject/providers';
+import { InfuraProvider } from '@ethersproject/providers';
 import MerkleTools from '@settlemint/merkle-tools';
 import Axios from 'axios';
 import { sha3_512 } from 'js-sha3';
@@ -332,9 +332,8 @@ export class CertiMintValidation {
         if (protocol === Protocol.ETHEREUM) {
           const signature = signatures[protocol]?.[address];
           if (signature) {
-            const signatureProvider = new JsonRpcProvider(
-              this.addInfuraApiKey(signature.nodeUrl)
-            );
+            const signatureProvider = InfuraProvider.getWebSocketProvider('homestead', this.config.ethereum.apiKey);
+
             const tx = await signatureProvider.getTransaction(
               this.addHexPrefix(signature.transactionId)
             );
@@ -384,9 +383,8 @@ export class CertiMintValidation {
           if (protocol === Protocol.ETHEREUM) {
             const signInvite = signInviteAnchors[protocol]?.[chainId];
             if (signInvite) {
-              const signInviteProvider = new JsonRpcProvider(
-                this.addInfuraApiKey(signInvite.nodeUrl)
-              );
+              const signInviteProvider = InfuraProvider.getWebSocketProvider('homestead', this.config.ethereum.apiKey);
+
               const tx = await signInviteProvider.getTransaction(
                 this.addHexPrefix(signInvite.transactionId)
               );
@@ -454,9 +452,8 @@ export class CertiMintValidation {
           if (protocol === Protocol.ETHEREUM) {
             const signature = signatures?.[protocol]?.[address];
             if (signature) {
-              const signatureProvider = new JsonRpcProvider(
-                this.addInfuraApiKey(signature.nodeUrl)
-              );
+              const signatureProvider = InfuraProvider.getWebSocketProvider('homestead', this.config.ethereum.apiKey);
+
               const tx = await signatureProvider.getTransaction(
                 this.addHexPrefix(signature.transactionId)
               );
@@ -488,9 +485,8 @@ export class CertiMintValidation {
           if (protocol === Protocol.ETHEREUM) {
             const signInvite = signInviteAnchors[protocol]?.[chainId];
             if (signInvite) {
-              const signInviteProvider = new JsonRpcProvider(
-                this.addInfuraApiKey(signInvite.nodeUrl)
-              );
+              const signInviteProvider = InfuraProvider.getWebSocketProvider('homestead', this.config.ethereum.apiKey);
+
               const tx = await signInviteProvider.getTransaction(
                 this.addHexPrefix(signInvite.transactionId)
               );
