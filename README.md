@@ -17,7 +17,7 @@ import { CertiMintValidation } from '@settlemint/certimint-validate';
 const config = {
   bitcoin: {
     url: 'https://api.blockcypher.com/v1/btc/main', // Optional; Api url for bitcoin
-    apiKey:  'e341cb773bff270e539690b93fb69f32'; // Optional, your api key from blockcypher if you use bitcoin anchors
+    apiKey:  'xxx'; // Optional, your api key from blockcypher if you use bitcoin anchors
   },
 
   ethereum: {
