@@ -117,7 +117,7 @@ export class CertiMintValidation {
 
     const validationStatus = await this.validateSeal(seal);
 
-    return hash === seal.dataHash ? validationStatus : SealStatus.FAILED;
+    return hash.toLowerCase() === seal.dataHash.toLowerCase() ? validationStatus : SealStatus.FAILED;
   }
 
   public async validateSeal(seal: ISeal): Promise<SealStatus> {
